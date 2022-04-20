@@ -10,6 +10,7 @@ import java.net.InetAddress;
 import java.net.MulticastSocket;
 import java.net.Socket;
 import java.text.SimpleDateFormat;
+import java.util.ArrayList;
 import java.util.Date;
 
 import gui.ClientGUI;
@@ -33,11 +34,16 @@ public class Client {
   InetAddress chatRoomServerAddress;
   BufferedReader chatRoomServerReader;
   BufferedWriter chatRoomServerWriter;
+  String mostRecentChatroomName;
+  Thread multicastMessageReceiverThread;
+  MulticastMessageReceiver currentMulticastMessageReceiver;
 
   public Client(long clientID) {
     this.clientID = clientID;
     this.username = null;
     this.serverPorts = new int[]{ 10000, 49152, 49153, 49154, 49155 };
+    this.mostRecentChatroomName = null;
+    this.multicastMessageReceiverThread = null;
     try {
       // set up socket to LookUp server
       // TODO - anonymize hostname and ports
@@ -95,7 +101,6 @@ public class Client {
   }
 
   public String sendNewChatroomMessage(String message) {
-    // TODO - send this to the host of the current chatroom
     message = "message" + this.username + "@#@" + message;
     try {
       this.chatRoomServerWriter.write(message);
@@ -104,22 +109,27 @@ public class Client {
     } catch (IOException e) {
       e.printStackTrace();
     }
-
-//    this.hostedChatroomServer.multicastMessage(message);
-    System.out.println("Trying to send message: " + message);
     return "success";
   }
 
   private class MulticastMessageReceiver implements Runnable {
     private final byte[] buffer = new byte[256];
+    private MulticastSocket multicastSocket;
+    boolean isAlive;
 
     public void run() {
       try {
         MulticastSocket multicastSocket = new MulticastSocket(4446);
+        this.multicastSocket = multicastSocket;
         multicastSocket.joinGroup(groupIP);
-        while (true) {
+        this.isAlive = true;
+        while (isAlive) {
           DatagramPacket packet = new DatagramPacket(buffer, buffer.length);
-          multicastSocket.receive(packet);
+          try {
+            multicastSocket.receive(packet);
+          } catch (IOException ioe) {
+            continue;
+          }
           String receivedMessage = new String(packet.getData(), 0, packet.getLength());
           if (receivedMessage.equalsIgnoreCase("stopMulticast")) {
             break;
@@ -131,11 +141,19 @@ public class Client {
             clientGUI.displayNewMessage(sender, actualMessage);
           }
         }
-        multicastSocket.leaveGroup(groupIP);
-        multicastSocket.close();
       } catch (IOException e) {
         e.printStackTrace();
       }
+    }
+
+    public void turnOff() {
+      isAlive = false;
+      try {
+        multicastSocket.leaveGroup(groupIP);
+      } catch (IOException e) {
+        e.printStackTrace();
+      }
+      multicastSocket.close();
     }
   }
 
@@ -147,18 +165,27 @@ public class Client {
       String response = this.reader.readLine();
       String[] responseArray = response.split(" ");
       if (responseArray[0].equalsIgnoreCase("success")) {
+        this.mostRecentChatroomName = chatName;
+        if (this.currentMulticastMessageReceiver != null) {
+          this.currentMulticastMessageReceiver.turnOff();
+        }
         int newID = Integer.parseInt(responseArray[1]);
         String groupIP = responseArray[2];
         this.groupIP = InetAddress.getByName(groupIP);
         this.hostedChatroomServer = new ChatroomServer(newID, this, groupIP);
-        System.out.println("sag a");
         this.chatroomServerPort = this.hostedChatroomServer.portForClients;
-        System.out.println("triple a");
-        this.chatRoomServerAddress = InetAddress.getByName("localhost"); // TODO - get address dynamically somehow
+        // tell LookUpServer what port this chatroom server is listening for new user connections on
+        this.writer.write("updateChatConnectionPort " + this.chatroomServerPort + " " + chatName);
+        this.writer.newLine();
+        this.writer.flush();
+        String updateResponse = this.reader.readLine();
+        this.chatRoomServerAddress = InetAddress.getByName("localhost"); // TODO - get address dynamically somehow (or maybe not since it will always be on localhost
         connectSocketToChatroomServer();
         MulticastMessageReceiver multicastMessageReceiver = new MulticastMessageReceiver();
-        new Thread(multicastMessageReceiver).start();
-        System.out.println("before responsearray return in attemptCreateChat");
+        this.currentMulticastMessageReceiver = multicastMessageReceiver;
+        this.multicastMessageReceiverThread = new Thread(multicastMessageReceiver);
+        this.multicastMessageReceiverThread.start();
+//        new Thread(multicastMessageReceiver).start();
         return responseArray[0];
       } else { // case where response is "exists"
         return responseArray[0];
@@ -169,21 +196,72 @@ public class Client {
     }
   }
 
+  public String attemptJoinChat(String chatName) {
+    try {
+      this.writer.write("joinChat " + chatName + " " + username);
+      this.writer.newLine();
+      this.writer.flush();
+      String response = this.reader.readLine();
+      String[] responseArray = response.split(" ");
+      if (responseArray[0].equalsIgnoreCase("success")) {
+        if (this.currentMulticastMessageReceiver != null) {
+          this.currentMulticastMessageReceiver.turnOff();
+        }
+        String socketAddress = responseArray[1];
+        String socketPort = responseArray[2];
+        String groupIP = responseArray[3];
+        this.groupIP = InetAddress.getByName(groupIP);
+        this.chatroomServerPort = Integer.parseInt(socketPort);
+        this.chatRoomServerAddress = InetAddress.getByName(socketAddress);
+        if (!chatName.equals(this.mostRecentChatroomName)) {
+          connectSocketToChatroomServer();
+        }
+        this.mostRecentChatroomName = chatName;
+        MulticastMessageReceiver multicastMessageReceiver = new MulticastMessageReceiver();
+        this.currentMulticastMessageReceiver = multicastMessageReceiver;
+        new Thread(multicastMessageReceiver).start();
+        return responseArray[0];
+      } else { // case where response is "nonexistent"
+        return responseArray[0];
+      }
+    } catch (IOException e) {
+      e.printStackTrace();
+      return null;
+    }
+  }
+
+  public ArrayList<String> attemptGetUsersInChatroom(String chatName) {
+    try {
+      this.writer.write("getMembers " + chatName);
+      this.writer.newLine();
+      this.writer.flush();
+      String response = this.reader.readLine();
+      if (response.equalsIgnoreCase("nonexistent")) {
+        // log here that chatroom name does not exist.
+        return new ArrayList<>();
+      }
+      String[] responseArray = response.split("@#@");
+      ArrayList<String> members = new ArrayList<>();
+      for (int i = 1; i < responseArray.length; i++) {
+        members.add(responseArray[i]);
+      }
+      return members;
+    } catch (IOException e) {
+      e.printStackTrace();
+      return new ArrayList<>();
+    }
+  }
+
   public void connectSocketToChatroomServer() {
     try {
-      System.out.println("a");
-      this.socketConnectedToChatroomServer = new Socket("localhost", this.chatroomServerPort); // TODO - adddress
-//      socket.setSoTimeout(90000);
+      this.socketConnectedToChatroomServer = new Socket(this.chatRoomServerAddress, this.chatroomServerPort);
 
-      System.out.println("b");
       BufferedWriter writer = new BufferedWriter(
               new OutputStreamWriter(socketConnectedToChatroomServer.getOutputStream()));
       BufferedReader reader = new BufferedReader(
               new InputStreamReader(socketConnectedToChatroomServer.getInputStream()));
-      System.out.println("c");
       this.chatRoomServerReader = reader;
       this.chatRoomServerWriter = writer;
-      System.out.println("connectSocketToChatroom after writer");
     } catch (IOException e) {
       e.printStackTrace();
     }

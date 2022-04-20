@@ -2,8 +2,11 @@ server/LookUpServer.class
 Driver.class
 server/ChatroomServer.class
 gui/ChatroomServerGUI.class
+gui/ClientGUI$GetUsersInChatroomButtonListener.class
+gui/SmartScroller$1.class
 logger/ProgLogger.class
 server/LookUpServer$ClientSocketHandler.class
+gui/SmartScroller.class
 logger/MilliLogFormatter.class
 server/ChatroomServer$ClientSocketHandler.class
 gui/ClientGUI$BackToChatSelectionButtonListener.class

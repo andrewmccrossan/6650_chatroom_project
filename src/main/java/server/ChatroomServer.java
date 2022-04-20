@@ -41,7 +41,6 @@ public class ChatroomServer {
     try {
       this.serverSocketForClients = new ServerSocket(0);
       this.portForClients = this.serverSocketForClients.getLocalPort();
-      System.out.println("Port for clients: " + this.portForClients);
       NewUserConnector newUserConnector = new NewUserConnector();
       new Thread(newUserConnector).start();
     } catch (IOException e) {
@@ -104,7 +103,6 @@ public class ChatroomServer {
     }
 
     public void run() {
-      System.out.println("New thread created...");
       BufferedReader reader = null;
       BufferedWriter writer = null;
       try {
@@ -118,6 +116,9 @@ public class ChatroomServer {
       while (true) {
         try {
           String line = reader.readLine();
+          if (line == null) {
+            continue;
+          }
           String beginningSubstring = line.substring(0, 7);
 //          String[] messageArray = line.split(" ");
           String response = null;

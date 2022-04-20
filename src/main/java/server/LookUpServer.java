@@ -8,6 +8,7 @@ import java.io.OutputStreamWriter;
 import java.net.InetAddress;
 import java.net.ServerSocket;
 import java.net.Socket;
+import java.util.ArrayList;
 import java.util.concurrent.ConcurrentHashMap;
 
 public class LookUpServer {
@@ -17,9 +18,10 @@ public class LookUpServer {
   public ConcurrentHashMap<String,Integer> usernamePortStore;
   public ConcurrentHashMap<String,ChatroomInfo> chatNameChatroomInfoStore;
   public int nextChatroomID = 0;
-  public String[] groupIPs = new String[]{ "239.0.0.0", "239.0.0.1", "239.0.0.2", "239.0.0.3",
-          "239.0.0.4", "239.0.0.5", "239.0.0.6", "239.0.0.7", "239.0.0.8", "239.0.0.9" };
-  public int nextGroupIPIndex = 0;
+  public String groupIPPrefix = "239.0.0."; // we will use multicast IPs in range 239.0.0.0-239.0.0.255
+//  public String[] groupIPs = new String[]{ "239.0.0.0", "239.0.0.1", "239.0.0.2", "239.0.0.3",
+//          "239.0.0.4", "239.0.0.5", "239.0.0.6", "239.0.0.7", "239.0.0.8", "239.0.0.9" };
+  public int nextGroupIPLastDigit = 0;
 
   public LookUpServer(int port, long serverID) {
     try {
@@ -88,15 +90,24 @@ public class LookUpServer {
         newChatroomInfo.setHostUsername(username);
         newChatroomInfo.setName(chatName);
         newChatroomInfo.setPort(this.clientPort);
-        int newGroupIPIndex = nextGroupIPIndex;
-        newChatroomInfo.setGroupIP(groupIPs[newGroupIPIndex]); // TODO - only woks for first 10
-        nextGroupIPIndex++;
+        int newGroupIPIndex = nextGroupIPLastDigit;
+//        newChatroomInfo.setGroupIP(groupIPs[newGroupIPIndex]);
+        newChatroomInfo.setGroupIP(groupIPPrefix + newGroupIPIndex);
+        nextGroupIPLastDigit++;
         newChatroomInfo.setInetAddress(this.clientAddress);
         newChatroomInfo.putMember(username);
         chatNameChatroomInfoStore.put(chatName, newChatroomInfo);
         System.out.println("Created chatroom with name " + chatName + " hosted by " + username);
-        return "success " + newID + " " + groupIPs[newGroupIPIndex];
+        return "success " + newID + " " + groupIPPrefix + newGroupIPIndex;
       }
+    }
+
+    private String handleUpdateChatConnectionPort(String[] updatePortMessage) {
+      int newPort = Integer.parseInt(updatePortMessage[1]);
+      String chatroomName = updatePortMessage[2];
+      ChatroomInfo chatroomInfo = chatNameChatroomInfoStore.get(chatroomName);
+      chatroomInfo.setPort(newPort);
+      return "success";
     }
 
     private String handleJoinChat(String[] chatRequest) {
@@ -106,16 +117,31 @@ public class LookUpServer {
         ChatroomInfo chatroomInfo = chatNameChatroomInfoStore.get(chatName);
         String address = chatroomInfo.inetAddress.getHostAddress();
         int port = chatroomInfo.port;
+        String groupIP = chatroomInfo.groupIP;
         chatroomInfo.putMember(username);
         System.out.println(username + " joined chatroom called " + chatName);
-        return "success " + address + " " + port;
+        return "success " + address + " " + port + " " + groupIP;
+      } else {
+        return "nonexistent";
+      }
+    }
+
+    private String handleGetUsersInChatroom(String[] usersRequest) {
+      String chatName = usersRequest[1];
+      if (chatNameChatroomInfoStore.containsKey(chatName)) {
+        ChatroomInfo chatroomInfo = chatNameChatroomInfoStore.get(chatName);
+        ArrayList<String> members = chatroomInfo.members;
+        StringBuilder membersString = new StringBuilder("START");
+        for (String member : members) {
+          membersString.append("@#@").append(member);
+        }
+        return membersString.toString();
       } else {
         return "nonexistent";
       }
     }
 
     public void run() {
-      System.out.println("New thread created...");
       BufferedReader reader = null;
       BufferedWriter writer = null;
       try {
@@ -129,6 +155,13 @@ public class LookUpServer {
       while (true) {
         try {
           String line = reader.readLine();
+          if (line == null) {
+            // This is the case that the client disconnected completely
+            // TODO - handle the situation from LookUpServer's point of view when a client process quits
+            // TODO - although, maybe the ChatroomServer should just handle this entirely by contacting the LookUpServer
+            this.clientSocket.close();
+            break;
+          }
           String[] messageArray = line.split(" ");
           String response = null;
           if (messageArray[0].equalsIgnoreCase("login")) {
@@ -137,13 +170,18 @@ public class LookUpServer {
             response = handleRegister(messageArray);
           } else if (messageArray[0].equalsIgnoreCase("createChat")) {
             response = handleCreateChat(messageArray);
+          } else if (messageArray[0].equalsIgnoreCase("updateChatConnectionPort")) {
+            response = handleUpdateChatConnectionPort(messageArray);
+          } else if (messageArray[0].equalsIgnoreCase("joinChat")) {
+            response = handleJoinChat(messageArray);
+          } else if (messageArray[0].equalsIgnoreCase("getMembers")) {
+            response = handleGetUsersInChatroom(messageArray);
           } else {
             response = "invalidRequestType";
           }
           writer.write(response);
           writer.newLine();
           writer.flush();
-          System.out.println("Sent response back to client with response " + response);
         } catch (IOException e) {
           e.printStackTrace();
         }

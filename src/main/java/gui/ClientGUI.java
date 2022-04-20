@@ -16,6 +16,7 @@ public class ClientGUI {
   public JFrame frame;
   public JPanel panel;
   public ArrayList<Component> componentsOnPanel;
+  public String myUsername;
   public JButton loginButton;
   public JTextField loginUsername;
   public JTextField loginPassword;
@@ -43,12 +44,14 @@ public class ClientGUI {
   public JLabel chatroomLabel;
   public JTextArea chatroomTextArea;
   public JScrollPane chatroomScrollPane;
+  public SmartScroller chatroomSmartScroller;
   public JTextField chatroomNewMessageField;
   public JButton chatroomNewMessageButton;
   public JSeparator chatroomSeparator;
   public JLabel roomMembersLabel;
   public JTextArea roomMembersTextArea;
   public JScrollPane roomMembersScrollPane;
+  public JButton getUsersInChatroomButton;
   public JButton backToChatSelectionButton;
 
 
@@ -60,6 +63,7 @@ public class ClientGUI {
       System.out.println("Login response: " + response);
       // change GUI to let user choose chatroom or create one
       if (response.equalsIgnoreCase("success")) {
+        myUsername = loginUsername.getText();
         openChatSelectionScreen();
       } else {
         openToastLabel("Incorrect username/password!");
@@ -74,6 +78,7 @@ public class ClientGUI {
       String response = client.attemptRegister(registerUsername.getText(), registerPassword.getText());
       System.out.println("Register response: " + response);
       if (response.equalsIgnoreCase("success")) {
+        myUsername = registerUsername.getText();
         openChatSelectionScreen();
       } else {
         openToastLabel("Already existing username!");
@@ -100,20 +105,26 @@ public class ClientGUI {
   public class JoinChatButtonListener implements ActionListener {
     @Override
     public void actionPerformed(ActionEvent e) {
-      System.out.println("TRYING TO JOIN CHATROOM");
-//      String response = client.attemptJoinChat(joinChatField.getText());
-//      System.out.println("Join chatroom response: " + response);
+      chatroomName = joinChatField.getText();
+      String response = client.attemptJoinChat(chatroomName);
+      if (response.equalsIgnoreCase("success")) {
+        openChatroomScreen();
+      } else { // lookup server returns "nonexistent"
+        openToastLabel("Chatroom name does not exist!");
+      }
+      System.out.println("Join chatroom response: " + response);
     }
   }
 
   public class CreateChatButtonListener implements ActionListener {
     @Override
     public void actionPerformed(ActionEvent e) {
-      System.out.println("TRYING TO CREATE CHATROOM");
       chatroomName = createChatField.getText();
       String response = client.attemptCreateChat(chatroomName);
       if (response.equalsIgnoreCase("success")) {
         openChatroomScreen();
+      } else { // when lookup server returns "exists"
+        openToastLabel("A chatroom already has that name!");
       }
       System.out.println("Create chatroom response: " + response);
     }
@@ -130,7 +141,17 @@ public class ClientGUI {
     @Override
     public void actionPerformed(ActionEvent e) {
       String response = client.sendNewChatroomMessage(chatroomNewMessageField.getText());
-      // TODO - handle the response to attempt to send message
+    }
+  }
+
+  public class GetUsersInChatroomButtonListener implements ActionListener {
+    @Override
+    public void actionPerformed(ActionEvent e) {
+      ArrayList<String> members = client.attemptGetUsersInChatroom(chatroomName);
+      roomMembersTextArea.setText("");
+      for (String member : members) {
+        roomMembersTextArea.append(member + "\n");
+      }
     }
   }
 
@@ -162,10 +183,11 @@ public class ClientGUI {
     panel.setLayout(new BoxLayout(panel, BoxLayout.Y_AXIS));
 
     // Add messaging components to panel
-    this.chatroomLabel = new JLabel(this.chatroomName);
+    this.chatroomLabel = new JLabel("Your username: " + this.myUsername);
     this.chatroomTextArea = new JTextArea(10, 30);
     this.chatroomScrollPane = new JScrollPane(this.chatroomTextArea);
     this.chatroomTextArea.setEditable(false);
+    new SmartScroller(this.chatroomScrollPane);
     this.chatroomNewMessageField = new JTextField(30);
     this.chatroomNewMessageButton = new JButton("Send");
     this.chatroomNewMessageButton.addActionListener(new ChatroomNewMessageButtonListener());
@@ -175,15 +197,18 @@ public class ClientGUI {
     addComponentToPanel(this.chatroomNewMessageField);
     addComponentToPanel(this.chatroomNewMessageButton);
     addComponentToPanel(this.chatroomSeparator);
-    addComponentToPanel(new JSeparator());
 
     // Add section for what room members are in chatroom
     this.roomMembersLabel = new JLabel("Users in this chatroom:");
     this.roomMembersTextArea = new JTextArea(5, 20);
     this.roomMembersScrollPane = new JScrollPane(this.roomMembersTextArea);
     this.roomMembersTextArea.setEditable(false);
+    new SmartScroller(this.roomMembersScrollPane);
+    this.getUsersInChatroomButton = new JButton("Update Members In Room");
+    this.getUsersInChatroomButton.addActionListener(new GetUsersInChatroomButtonListener());
     addComponentToPanel(this.roomMembersLabel);
     addComponentToPanel(this.roomMembersScrollPane);
+    addComponentToPanel(this.getUsersInChatroomButton);
 
     // Add button to go back to menu to join another chatroom
     this.backToChatSelectionButton = new JButton("Go Back To Chatroom Selection Screen");
@@ -278,48 +303,5 @@ public class ClientGUI {
     this.panel = new JPanel();
     this.componentsOnPanel = new ArrayList<>();
     openLoginRegisterScreen();
-
-//    this.loginTitleLabel = new JLabel("Login");
-//    this.loginTitleLabel.setFont(new Font("Serif", Font.BOLD, 26));
-//    this.loginUsernameLabel = new JLabel("Username:");
-//    this.loginUsername = new JTextField(10);
-//    this.loginPasswordLabel = new JLabel("Password:");
-//    this.loginPassword = new JTextField(10);
-//    this.loginButton = new JButton("Login");
-//    this.loginButton.addActionListener(new LoginButtonListener());
-//
-//    this.separator = new JSeparator();
-//
-//    this.registerTitleLabel = new JLabel("Register");
-//    this.registerTitleLabel.setFont(new Font("Serif", Font.BOLD, 26));
-//    this.registerUsernameLabel = new JLabel("Username:");
-//    this.registerUsername = new JTextField(10);
-//    this.registerPasswordLabel = new JLabel("Password:");
-//    this.registerPassword = new JTextField(10);
-//    this.registerButton = new JButton("Register");
-//    this.registerButton.addActionListener(new RegisterButtonListener());
-//
-//    panel.setBorder(BorderFactory.createEmptyBorder(30, 30, 10, 30));
-//    panel.setLayout(new GridLayout(0, 1));
-//
-//    addComponentToPanel(this.loginTitleLabel);
-//    addComponentToPanel(this.loginUsernameLabel);
-//    addComponentToPanel(this.loginUsername);
-//    addComponentToPanel(this.loginPasswordLabel);
-//    addComponentToPanel(this.loginPassword);
-//    addComponentToPanel(this.loginButton);
-//    addComponentToPanel(this.separator);
-//    addComponentToPanel(this.registerTitleLabel);
-//    addComponentToPanel(this.registerUsernameLabel);
-//    addComponentToPanel(this.registerUsername);
-//    addComponentToPanel(this.registerPasswordLabel);
-//    addComponentToPanel(this.registerPassword);
-//    addComponentToPanel(this.registerButton);
-//
-//    frame.add(panel, BorderLayout.CENTER);
-//    frame.setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
-//    frame.setTitle("Login/Register");
-//    frame.pack();
-//    frame.setVisible(true);
   }
 }
