@@ -38,6 +38,12 @@ public class ClientGUI {
   public JLabel createChatLabel;
   public JTextField createChatField;
   public JButton createChatButton;
+  public JLabel allChatroomNamesLabel;
+  public JLabel allChatroomMembersLabel;
+  public JTextArea allChatroomNamesTextArea;
+  public JScrollPane allChatroomNamesScrollPane;
+  public JTextArea allChatroomMembersTextArea;
+  public JScrollPane allChatroomMembersScrollPane;
   public JButton logoutButton;
 
   public String chatroomName;
@@ -234,14 +240,34 @@ public class ClientGUI {
 
     panel.setLayout(new GridLayout(0, 2));
 
-    joinChatLabel = new JLabel("Join Chatroom:");
-    createChatLabel = new JLabel("Create Chatroom:");
+    joinChatLabel = new JLabel("Enter Chatroom to Join:");
+    createChatLabel = new JLabel("Enter Chatroom to Create:");
     joinChatField = new JTextField(10);
     createChatField = new JTextField(10);
     joinChatButton = new JButton("Join");
     createChatButton = new JButton("Create");
     joinChatButton.addActionListener(new JoinChatButtonListener());
     createChatButton.addActionListener(new CreateChatButtonListener());
+
+    allChatroomNamesLabel = new JLabel("Available Chatrooms:");
+    allChatroomMembersLabel = new JLabel("Total members:");
+    allChatroomNamesTextArea = new JTextArea(4, 4);
+    allChatroomNamesScrollPane = new JScrollPane(allChatroomNamesTextArea);
+    allChatroomNamesTextArea.setEditable(false);
+    new SmartScroller(allChatroomNamesScrollPane);
+    allChatroomMembersTextArea = new JTextArea(4, 4);
+    allChatroomMembersScrollPane = new JScrollPane(allChatroomMembersTextArea);
+    allChatroomMembersTextArea.setEditable(false);
+    new SmartScroller(allChatroomMembersScrollPane);
+
+    ArrayList<String[]> chatNameNumberPairs = this.client.attemptGetNumUsersInChatrooms();
+    for (String[] chatNameNumberPair : chatNameNumberPairs) {
+      String roomName = chatNameNumberPair[0];
+      String numUsers = chatNameNumberPair[1];
+      allChatroomNamesTextArea.append(roomName + "\n");
+      allChatroomMembersTextArea.append(numUsers + "\n");
+    }
+
     logoutButton = new JButton("Log Out");
     logoutButton.addActionListener(new LogOutButtonListener());
 
@@ -251,6 +277,10 @@ public class ClientGUI {
     addComponentToPanel(createChatField);
     addComponentToPanel(joinChatButton);
     addComponentToPanel(createChatButton);
+    addComponentToPanel(allChatroomNamesLabel);
+    addComponentToPanel(allChatroomMembersLabel);
+    addComponentToPanel(allChatroomNamesScrollPane);
+    addComponentToPanel(allChatroomMembersScrollPane);
     addComponentToPanel(logoutButton);
 
     frame.setTitle("Join/Create Chatroom");

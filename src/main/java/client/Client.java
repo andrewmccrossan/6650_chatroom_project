@@ -48,8 +48,6 @@ public class Client {
       // set up socket to LookUp server
       // TODO - anonymize hostname and ports
       Socket socket = new Socket("localhost", 10000);
-//      socket.setSoTimeout(90000);
-
       BufferedWriter writer = new BufferedWriter(
               new OutputStreamWriter(socket.getOutputStream()));
       BufferedReader reader = new BufferedReader(
@@ -62,16 +60,11 @@ public class Client {
 //      writer.close();
     } catch (IOException e) {
       e.printStackTrace();
-//      tcpClient.clientLogger.logger.severe(IClient.currTime() + e.getMessage());
     }
   }
 
   public void setClientGUI(ClientGUI clientGUI) {
     this.clientGUI = clientGUI;
-  }
-
-  public String contactServer(String message) {
-    return null;
   }
 
   public String attemptLogin(String username, String password) {
@@ -192,6 +185,27 @@ public class Client {
     } catch (IOException e) {
       e.printStackTrace();
       return null;
+    }
+  }
+
+  public ArrayList<String[]> attemptGetNumUsersInChatrooms() {
+    try {
+      this.writer.write("getNumUsers ");
+      this.writer.newLine();
+      this.writer.flush();
+      String response = this.reader.readLine();
+      if (response.equalsIgnoreCase("")) {
+        return new ArrayList<>();
+      }
+      String[] responseArray = response.split("@&@");
+      ArrayList<String[]> namesNumbers = new ArrayList<>();
+      for (int i = 0; i < responseArray.length; i++) {
+        namesNumbers.add(responseArray[i].split("%&%"));
+      }
+      return namesNumbers;
+    } catch (IOException e) {
+      e.printStackTrace();
+      return new ArrayList<>();
     }
   }
 

@@ -9,6 +9,7 @@ import java.net.InetAddress;
 import java.net.ServerSocket;
 import java.net.Socket;
 import java.util.ArrayList;
+import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 
 public class LookUpServer {
@@ -141,6 +142,16 @@ public class LookUpServer {
       }
     }
 
+    private String handleGetNumUsersInChatrooms() {
+      StringBuilder response = new StringBuilder();
+      for (Map.Entry nameInfoPair : chatNameChatroomInfoStore.entrySet()) {
+        String name = (String) nameInfoPair.getKey();
+        ChatroomInfo info = (ChatroomInfo) nameInfoPair.getValue();
+        response.append(name).append("%&%").append(info.members.size()).append("@&@");
+      }
+      return response.toString();
+    }
+
     public void run() {
       BufferedReader reader = null;
       BufferedWriter writer = null;
@@ -176,6 +187,8 @@ public class LookUpServer {
             response = handleJoinChat(messageArray);
           } else if (messageArray[0].equalsIgnoreCase("getMembers")) {
             response = handleGetUsersInChatroom(messageArray);
+          } else if (messageArray[0].equalsIgnoreCase("getNumUsers")) {
+            response = handleGetNumUsersInChatrooms();
           } else {
             response = "invalidRequestType";
           }
