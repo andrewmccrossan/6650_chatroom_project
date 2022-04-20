@@ -20,6 +20,7 @@ import gui.ClientGUI;
 public class ChatroomServer {
 
   public int ID;
+  public String chatroomName;
   public Client hostClient;
   public ChatroomServerGUI chatroomServerGUI;
   public ServerSocket serverSocketForClients; // for receiving messages from clients in chatroom.
@@ -29,8 +30,9 @@ public class ChatroomServer {
   public byte[] buffer;
   public Socket socketForLookUpServer; // TODO - for receiving heartbeats from LookUpServer.
 
-  public ChatroomServer(int ID, Client hostClient, String groupIP) {
+  public ChatroomServer(int ID, Client hostClient, String groupIP, String chatroomName) {
     this.ID = ID;
+    this.chatroomName = chatroomName;
     this.hostClient = hostClient;
     this.chatroomServerGUI = new ChatroomServerGUI(this);
     try {
@@ -58,10 +60,7 @@ public class ChatroomServer {
         } catch (IOException e) {
           e.printStackTrace();
         }
-//      Socket clientSocket = this.serverSocket.accept();
-//      socket.setSoTimeout(999000);
         ClientSocketHandler clientSocketHandler = new ClientSocketHandler(clientSocket);
-//      LookUpServer.ClientSocketHandler clientSocketHandler = new LookUpServer.ClientSocketHandler(clientSocket);
         new Thread(clientSocketHandler).start();
       }
     }
@@ -97,6 +96,10 @@ public class ChatroomServer {
     private String handleMessage(String message) {
       // multicast to all connected clients
       multicastMessage(message);
+      String[] fullMessage = message.split("@#@");
+      String sender = fullMessage[0];
+      String actualMessage = fullMessage[1];
+      chatroomServerGUI.displayNewMessage(sender, actualMessage);
       return "success";
       // TODO - notify LookUpServer of the message sent
 

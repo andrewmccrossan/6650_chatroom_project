@@ -172,7 +172,7 @@ public class Client {
         int newID = Integer.parseInt(responseArray[1]);
         String groupIP = responseArray[2];
         this.groupIP = InetAddress.getByName(groupIP);
-        this.hostedChatroomServer = new ChatroomServer(newID, this, groupIP);
+        this.hostedChatroomServer = new ChatroomServer(newID, this, groupIP, chatName);
         this.chatroomServerPort = this.hostedChatroomServer.portForClients;
         // tell LookUpServer what port this chatroom server is listening for new user connections on
         this.writer.write("updateChatConnectionPort " + this.chatroomServerPort + " " + chatName);
@@ -185,7 +185,6 @@ public class Client {
         this.currentMulticastMessageReceiver = multicastMessageReceiver;
         this.multicastMessageReceiverThread = new Thread(multicastMessageReceiver);
         this.multicastMessageReceiverThread.start();
-//        new Thread(multicastMessageReceiver).start();
         return responseArray[0];
       } else { // case where response is "exists"
         return responseArray[0];
@@ -297,16 +296,5 @@ public class Client {
     Client client = new Client(clientID);
     ClientGUI clientGUI = new ClientGUI(client);
     client.setClientGUI(clientGUI);
-//      IServer proposer1 = (IServer) Naming.lookup("rmi://" + hostname + "/ProposerService1");
-//      IServer proposer2 = (IServer) Naming.lookup("rmi://" + hostname + "/ProposerService2");
-//      client.addStorer(proposer1);
-//      client.addStorer(proposer2);
-//      client.setStorer(proposer1);
-
-    // Automatically have client pre-populate server's data store and test it with CRUD.
-//      client.automatedPopulating();
-
-    // User can continuously send message to server, get response, and send more messages
-//      client.manualConversation();
   }
 }

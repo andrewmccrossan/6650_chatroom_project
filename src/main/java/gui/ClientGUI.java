@@ -54,6 +54,13 @@ public class ClientGUI {
   public JButton getUsersInChatroomButton;
   public JButton backToChatSelectionButton;
 
+  public ClientGUI(Client client) {
+    this.client = client;
+    this.frame = new JFrame();
+    this.panel = new JPanel();
+    this.componentsOnPanel = new ArrayList<>();
+    openLoginRegisterScreen();
+  }
 
   public class LoginButtonListener implements ActionListener {
     @Override
@@ -295,13 +302,5 @@ public class ClientGUI {
     frame.setTitle("Login/Register");
     frame.pack();
     frame.setVisible(true);
-  }
-
-  public ClientGUI(Client client) {
-    this.client = client;
-    this.frame = new JFrame();
-    this.panel = new JPanel();
-    this.componentsOnPanel = new ArrayList<>();
-    openLoginRegisterScreen();
   }
 }
