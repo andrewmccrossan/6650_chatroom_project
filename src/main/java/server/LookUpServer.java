@@ -20,9 +20,9 @@ public class LookUpServer {
   public ConcurrentHashMap<String,ChatroomInfo> chatNameChatroomInfoStore;
   public int nextChatroomID = 0;
   public String groupIPPrefix = "239.0.0."; // we will use multicast IPs in range 239.0.0.0-239.0.0.255
-//  public String[] groupIPs = new String[]{ "239.0.0.0", "239.0.0.1", "239.0.0.2", "239.0.0.3",
-//          "239.0.0.4", "239.0.0.5", "239.0.0.6", "239.0.0.7", "239.0.0.8", "239.0.0.9" };
   public int nextGroupIPLastDigit = 0;
+//  public ConcurrentHashMap<Integer,InstigateConnectionToOtherLookUpServerHandler> otherLookUpServerSocketConnectionHandlers;
+//  public ConcurrentHashMap<Integer,Socket> otherLookUpServerSockets;
 
   public LookUpServer(int port, long serverID) {
     try {
@@ -40,7 +40,6 @@ public class LookUpServer {
   public void waitForLogin() throws IOException {
     while (true) {
       Socket clientSocket = this.serverSocket.accept();
-//      socket.setSoTimeout(999000);
       ClientSocketHandler clientSocketHandler = new ClientSocketHandler(clientSocket);
       new Thread(clientSocketHandler).start();
     }
@@ -202,16 +201,100 @@ public class LookUpServer {
     }
   }
 
+  public void doTransaction(Transaction transaction) {
+    // TODO - there will be a lot of logic here to parse a transaction that will change...
+    // TODO - ...the state of the server. This is because info is passed through sockets...
+    // TODO - ...as strings.
+
+  }
+
+//  public void instigateConnectionToOtherLookUpServer(InetAddress otherAddress, int otherPort, String paxosRole, int otherID) {
+//    InstigateConnectionToOtherLookUpServerHandler instigateConnectionToOtherLookUpServerHandler = new InstigateConnectionToOtherLookUpServerHandler(otherAddress, otherPort, paxosRole, otherID);
+//    this.otherLookUpServerSocketConnectionHandlers.put(otherID, instigateConnectionToOtherLookUpServerHandler);
+//    new Thread(instigateConnectionToOtherLookUpServerHandler).start();
+//  }
+//
+//  private class InstigateConnectionToOtherLookUpServerHandler implements Runnable {
+//    private Socket paxosSocket;
+//    private final InetAddress socketAddress;
+//    private final int paxosPort;
+//    private BufferedReader paxosReader;
+//    private BufferedWriter paxosWriter;
+//    private final String paxosRole;
+//    private final int otherServerID;
+//
+//    public InstigateConnectionToOtherLookUpServerHandler(InetAddress otherAddress, int otherPort, String paxosRole, int otherID) {
+//      this.socketAddress = otherAddress;
+//      this.paxosPort = otherPort;
+//      this.paxosRole = paxosRole;
+//      this.otherServerID = otherID;
+//    }
+//
+//    public void run() {
+//      Socket socket = null;
+//      BufferedReader reader = null;
+//      BufferedWriter writer = null;
+//      try {
+//        socket = new Socket(this.socketAddress, this.paxosPort);
+////        socket = new Socket("localhost", 10000);
+//        writer = new BufferedWriter(
+//                new OutputStreamWriter(socket.getOutputStream()));
+//        reader = new BufferedReader(
+//                new InputStreamReader(socket.getInputStream()));
+//      } catch (IOException e) {
+//        e.printStackTrace();
+//      }
+//      this.paxosSocket = socket;
+//      this.paxosReader = reader;
+//      this.paxosWriter = writer;
+//
+//      while (true) {
+//
+//      }
+//    }
+//
+//    public void sendPaxosMessage(String message) {
+//
+//    }
+//
+//    private void startListening() {
+//      new Thread(new Runnable() {
+//        @Override
+//        public void run() {
+//          String line = null;
+//          try {
+//            line = paxosReader.readLine();
+//            String[] messageArray = line.split(" ");
+//            System.out.println("  ----- Recieved New Message -----\n" + line);
+//            // parse line and handle logic
+//            if (messageArray[0].equalsIgnoreCase("prepare")) {
+//              System.out.println("Prepare request received");
+//            } else if (messageArray[0].equalsIgnoreCase("accept")) {
+//              System.out.println("Accept request received");
+//            } else if (messageArray[0].equalsIgnoreCase("promise")) {
+//              System.out.println("Promise received");
+//            }
+//          } catch (IOException e) {
+//            e.printStackTrace();
+//          }
+//        }
+//      }).start();
+//    }
+//  }
+
   public static void main(String[] args) {
-    int port = 10000;
+    int port0 = 10000;
+    int port1 = 49152;
+    //TODO - registry address and port hardcoded as well
     if (args.length == 1) {
       try {
-        port = Integer.parseInt(args[0]);
+        port0 = Integer.parseInt(args[0]);
       } catch (Exception e) {
       }
     }
     System.out.println("Server is running...");
-    LookUpServer lookUpServer0 = new LookUpServer(port, 0);
+    LookUpServer lookUpServer0 = new LookUpServer(port0, 0);
+//    PaxosLookUp paxosLookUpServer0 = new PaxosLookUp(port1, 1);
 //    LookUpServer lookUpServer1 = new LookUpServer(49152, 1);
 //    LookUpServer lookUpServer2 = new LookUpServer(49153, 2);
 //    LookUpServer lookUpServer3 = new LookUpServer(49154, 3);
