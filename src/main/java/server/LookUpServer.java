@@ -1,5 +1,6 @@
 package server;
 
+import java.awt.event.ActionListener;
 import java.io.BufferedReader;
 import java.io.BufferedWriter;
 import java.io.IOException;
@@ -19,6 +20,7 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.TimeUnit;
 
 import javax.imageio.IIOException;
+import javax.swing.*;
 
 public class LookUpServer {
 
@@ -38,8 +40,12 @@ public class LookUpServer {
   public String addressForOtherPaxosServersToConnectTo;
   public int portForOtherPaxosServersToConnectTo;
   public String myPaxosRole;
-  public String anotherLiveProposerAddress;
-  public int anotherLiveProposerPort;
+
+  // chatroom and heartbeat vars
+  public ConcurrentHashMap<String,ChatroomInfo> hostUsernameToChatroomInfos;
+
+//  public String anotherLiveProposerAddress;
+//  public int anotherLiveProposerPort;
 
   // Acceptor variables
   public long maxPromisedProposalNumber = -1;
@@ -61,6 +67,7 @@ public class LookUpServer {
       this.usernamePasswordStore.put("admin", "password");
       this.usernamePortStore = new ConcurrentHashMap<>();
       this.chatNameChatroomInfoStore = new ConcurrentHashMap<>();
+      this.hostUsernameToChatroomInfos = new ConcurrentHashMap<>();
       new Thread(new LoginWaiter()).start();
       this.myPaxosRole = myPaxosRole;
       createServerSocketForOtherPaxosServersToConnectTo();
@@ -172,6 +179,21 @@ public class LookUpServer {
     String username = transactionInfo[2];
     ChatroomInfo chatroomInfo = chatNameChatroomInfoStore.get(chatName);
     chatroomInfo.putMember(username);
+  }
+
+  public void doMessageSentTransaction(String[] transactionInfo) {
+    String senderUsername = transactionInfo[1];
+    String messageSent = transactionInfo[2];
+    String chatName = transactionInfo[3];
+    ChatroomInfo chatroomInfo = chatNameChatroomInfoStore.get(chatName);
+    chatroomInfo.putMessage(senderUsername, messageSent);
+  }
+
+  public void doUserLeftChatTransaction(String[] transactionInfo) {
+    String leaverUsername = transactionInfo[1];
+    String chatName = transactionInfo[2];
+    ChatroomInfo chatroomInfo = chatNameChatroomInfoStore.get(chatName);
+    chatroomInfo.removeMember(leaverUsername);
   }
 
   private class PaxosSocketMessageReceiver implements Runnable {
@@ -308,6 +330,10 @@ public class LookUpServer {
         doUpdateChatConnectionPortTransaction(transactionInfo);
       } else if (transactionType.equalsIgnoreCase("joinChat")) {
         doJoinChatTransaction(transactionInfo);
+      } else if (transactionType.equalsIgnoreCase("messageSent")) {
+        doMessageSentTransaction(transactionInfo);
+      } else if (transactionType.equalsIgnoreCase("userLeft")) {
+        doUserLeftChatTransaction(transactionInfo);
       }
     }
 
@@ -477,9 +503,15 @@ public class LookUpServer {
   }
 
   private class ClientSocketHandler implements Runnable {
-    private final Socket clientSocket;
-    private final InetAddress clientAddress;
-    private final int clientPort;
+    private String clientUsername;
+    private Socket clientSocket;
+    private InetAddress clientAddress;
+    private int clientPort;
+    private BufferedWriter clientWriter;
+    private BufferedReader clientReader;
+
+    private BufferedWriter heartbeatWriter;
+    private BufferedReader heartbeatReader;
 //    private Transaction largestPromiseTransaction;
 
     public ClientSocketHandler(Socket socket) {
@@ -513,7 +545,7 @@ public class LookUpServer {
       if (usernamePasswordStore.get(username) != null
               && usernamePasswordStore.get(username).equalsIgnoreCase(password)
               && !loggedInUsersAndPasswords.containsKey(username)) {
-        startPaxos("login&$$" + username + "&%%" + password);
+        startPaxos("login&%%" + username + "&%%" + password);
         loggedInUsersAndPasswords.put(username, password);
         return "success";
       } else if (usernamePasswordStore.get(username) == null || usernamePasswordStore.get(username).equalsIgnoreCase(password)){
@@ -538,7 +570,7 @@ public class LookUpServer {
 
     private String handleLogout(String[] accountInfo) {
       String username = accountInfo[1];
-      startPaxos("logout&$$" + username);
+      startPaxos("logout&%%" + username);
       loggedInUsersAndPasswords.remove(username);
       return "success";
     }
@@ -546,6 +578,7 @@ public class LookUpServer {
     private String handleCreateChat(String[] chatRequest) {
       String chatName = chatRequest[1];
       String username = chatRequest[2];
+      this.clientUsername = username;
       if (chatNameChatroomInfoStore.containsKey(chatName)) {
         return "exists";
       } else {
@@ -565,8 +598,99 @@ public class LookUpServer {
         newChatroomInfo.setInetAddress(this.clientAddress);
         newChatroomInfo.putMember(username);
         chatNameChatroomInfoStore.put(chatName, newChatroomInfo);
+        hostUsernameToChatroomInfos.put(username, newChatroomInfo);
+        String heartbeatAddress = null;
+        int heartbeatPort = 0;
+        try {
+          ServerSocket heartbeatServerSocket = new ServerSocket(0);
+          heartbeatAddress = heartbeatServerSocket.getInetAddress().getHostAddress();
+          heartbeatPort = heartbeatServerSocket.getLocalPort();
+
+          new Thread(new ChatroomHeartbeat(heartbeatServerSocket)).start();
+        } catch (IOException e) {
+          e.printStackTrace();
+        }
         System.out.println("Created chatroom with name " + chatName + " hosted by " + username);
-        return "success@#@" + newID + "@#@" + groupIPPrefix + newGroupIPIndex;
+        return "success@#@" + newID + "@#@" + groupIPPrefix + newGroupIPIndex+ "@#@" + heartbeatAddress + "@#@" + heartbeatPort;
+      }
+    }
+
+    private class ChatroomHeartbeat implements Runnable {
+
+      public ServerSocket heartbeatServerSocket;
+
+      public ChatroomHeartbeat(ServerSocket heartbeatSocket) {
+        this.heartbeatServerSocket = heartbeatSocket;
+      }
+
+      @Override
+      public void run() {
+        try {
+          Socket heartbeatSocket = this.heartbeatServerSocket.accept();
+          heartbeatWriter = new BufferedWriter(new OutputStreamWriter(heartbeatSocket.getOutputStream()));
+          heartbeatReader = new BufferedReader(new InputStreamReader(heartbeatSocket.getInputStream()));
+          new Thread(new ChatroomListener(heartbeatWriter,heartbeatReader)).start();
+        } catch (IOException e) {
+          e.printStackTrace();
+        }
+        while (true) {
+          ActionListener listener = event -> {
+            try {
+              heartbeatWriter.write("heartbeat");
+              heartbeatWriter.newLine();
+              heartbeatWriter.flush();
+            } catch (IOException e) {
+              // TODO - this is the case that the chatroom host failed.
+
+              e.printStackTrace();
+            }
+          };
+          Timer timer = new Timer(500, listener);
+          timer.setRepeats(false);
+          timer.start();
+        }
+      }
+    }
+
+    private class ChatroomListener implements Runnable {
+
+      private BufferedWriter chatroomWriter;
+      private BufferedReader chatroomReader;
+
+      public ChatroomListener(BufferedWriter writer, BufferedReader reader) {
+        this.chatroomWriter = writer;
+        this.chatroomReader = reader;
+      }
+
+      @Override
+      public void run() {
+        while (true) {
+          String line = null;
+          try {
+            line = this.chatroomReader.readLine();
+            String[] messageArray = line.split("@#@");
+            if (messageArray[0].equalsIgnoreCase("messageSent")) {
+              //TODO - handle case that a message was sent
+              String senderUsername = messageArray[1];
+              String messageSent = messageArray[2];
+              ChatroomInfo chatroomInfo = hostUsernameToChatroomInfos.get(clientUsername);
+              chatroomInfo.putMessage(senderUsername, messageSent);
+              String transaction = "messageSent&%%" + messageArray[1] + "&%%" + messageArray[2] + "&%%" + chatroomInfo.name;
+              startPaxos(transaction);
+            } else if (messageArray[0].equalsIgnoreCase("userLeft")) {
+              //TODO - handle case that a user (not host) left the chatroom
+              String leaverUsername = messageArray[1];
+              ChatroomInfo chatroomInfo = hostUsernameToChatroomInfos.get(clientUsername);
+              chatroomInfo.removeMember(leaverUsername);
+              String transaction = "userLeft&%%" + messageArray[1] + "&%%" + chatroomInfo.name;
+              startPaxos(transaction);
+            } else if (messageArray[0].equalsIgnoreCase("addedASCII")) {
+              // TODO - maybe add this portion
+            }
+          } catch (IOException e) {
+            e.printStackTrace();
+          }
+        }
       }
     }
 
@@ -631,6 +755,8 @@ public class LookUpServer {
                 new InputStreamReader(this.clientSocket.getInputStream()));
         writer = new BufferedWriter(
                 new OutputStreamWriter(this.clientSocket.getOutputStream()));
+        this.clientReader = reader;
+        this.clientWriter = writer;
       } catch (IOException e) {
         e.printStackTrace();
       }

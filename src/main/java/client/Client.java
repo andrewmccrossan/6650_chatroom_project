@@ -214,8 +214,12 @@ public class Client {
         }
         int newID = Integer.parseInt(responseArray[1]);
         String groupIP = responseArray[2];
+        String heartbeatAddress = responseArray[3];
+        int heartbeatPort = Integer.parseInt(responseArray[4]);
+
         this.groupIP = InetAddress.getByName(groupIP);
-        this.hostedChatroomServer = new ChatroomServer(newID, this, groupIP, chatName);
+        this.hostedChatroomServer = new ChatroomServer(newID, this, groupIP, chatName, heartbeatAddress, heartbeatPort);
+
         this.chatroomServerPort = this.hostedChatroomServer.portForClients;
         // tell LookUpServer what port this chatroom server is listening for new user connections on
         this.writer.write("updateChatConnectionPort@#@" + this.chatroomServerPort + "@#@" + chatName);

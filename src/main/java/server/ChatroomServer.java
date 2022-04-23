@@ -1,5 +1,6 @@
 package server;
 
+import java.awt.*;
 import java.io.BufferedReader;
 import java.io.BufferedWriter;
 import java.io.IOException;
@@ -28,13 +29,23 @@ public class ChatroomServer {
   public InetAddress group;
   public DatagramSocket datagramSocketForMulticast;
   public byte[] buffer;
+
+  // heartbeat vars for keeping in contact with LookUpServer
+  public String heartbeatAddress;
+  public int heartbeatPort;
+  public Socket heartbeatSocket;
+  public BufferedReader heartbeatReader;
+  public BufferedWriter heartbeatWriter;
   public Socket socketForLookUpServer; // TODO - for receiving heartbeats from LookUpServer.
 
-  public ChatroomServer(int ID, Client hostClient, String groupIP, String chatroomName) {
+  public ChatroomServer(int ID, Client hostClient, String groupIP, String chatroomName,
+                        String heartbeatAddress, int heartbeatPort) {
     this.ID = ID;
     this.chatroomName = chatroomName;
     this.hostClient = hostClient;
     this.chatroomServerGUI = new ChatroomServerGUI(this);
+    this.heartbeatAddress = heartbeatAddress;
+    this.heartbeatPort = heartbeatPort;
     try {
       this.group = InetAddress.getByName(groupIP);
     } catch (UnknownHostException e) {
@@ -45,6 +56,13 @@ public class ChatroomServer {
       this.portForClients = this.serverSocketForClients.getLocalPort();
       NewUserConnector newUserConnector = new NewUserConnector();
       new Thread(newUserConnector).start();
+    } catch (IOException e) {
+      e.printStackTrace();
+    }
+    try {
+      this.heartbeatSocket = new Socket(heartbeatAddress, heartbeatPort);
+      HeartbeatHandler heartbeatHandler = new HeartbeatHandler(this.heartbeatSocket);
+      new Thread(heartbeatHandler).start();
     } catch (IOException e) {
       e.printStackTrace();
     }
@@ -62,6 +80,36 @@ public class ChatroomServer {
         }
         ClientSocketHandler clientSocketHandler = new ClientSocketHandler(clientSocket);
         new Thread(clientSocketHandler).start();
+      }
+    }
+  }
+
+  public class HeartbeatHandler implements Runnable {
+
+    public Socket socket;
+
+    public HeartbeatHandler(Socket socket) {
+      this.socket = socket;
+    }
+
+    @Override
+    public void run() {
+      try {
+        heartbeatReader = new BufferedReader(new InputStreamReader(socket.getInputStream()));
+        heartbeatWriter = new BufferedWriter(new OutputStreamWriter(socket.getOutputStream()));
+      } catch (IOException e) {
+        e.printStackTrace();
+      }
+      while (true) {
+        try {
+          String line = heartbeatReader.readLine();
+          String[] messageArray = line.split("@#@");
+          if (messageArray[0].equalsIgnoreCase("heartbeat")) {
+            // don't do anything since the LookUp server knows if this message didn't go through
+          }
+        } catch (IOException e) {
+          e.printStackTrace();
+        }
       }
     }
   }
@@ -100,6 +148,13 @@ public class ChatroomServer {
       String sender = fullMessage[0];
       String actualMessage = fullMessage[1];
       chatroomServerGUI.displayNewMessage(sender, actualMessage);
+      try {
+        heartbeatWriter.write("messageSent@#@" + sender + "@#@" + actualMessage);
+        heartbeatWriter.newLine();
+        heartbeatWriter.flush();
+      } catch (IOException e) {
+        e.printStackTrace();
+      }
       return "success";
       // TODO - notify LookUpServer of the message sent
 

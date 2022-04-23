@@ -259,7 +259,7 @@ public class ClientGUI {
     this.backToChatSelectionButton = new JButton("Go Back To Chatroom Selection Screen");
     this.backToChatSelectionButton.addActionListener(new BackToChatSelectionButtonListener());
     this.logoutButton = new JButton("Log Out");
-    this.logoutButton.addActionListener(new LogOutButtonListener());
+    this.logoutButton.addActionListener(new LogOutButtonListener()); // TODO - maybe have a differnt button listener for this
     addComponentToPanel(this.backToChatSelectionButton);
     addComponentToPanel(this.logoutButton);
 
