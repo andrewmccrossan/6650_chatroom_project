@@ -72,14 +72,23 @@ public class ClientGUI {
     @Override
     public void actionPerformed(ActionEvent e) {
       // send login username and password
-      String response = client.attemptLogin(loginUsername.getText(), loginPassword.getText());
-      System.out.println("Login response: " + response);
-      // change GUI to let user choose chatroom or create one
-      if (response.equalsIgnoreCase("success")) {
-        myUsername = loginUsername.getText();
-        openChatSelectionScreen();
+      if (loginUsername.getText().length() == 0 || loginPassword.getText().length() == 0) {
+        openToastLabel("Provide username and password!");
+      } else if (loginUsername.getText().contains("@#@") || loginUsername.getText().contains("%&%")
+              || loginPassword.getText().contains("@#@") || loginPassword.getText().contains("%&%")) {
+        openToastLabel("Do not use special reserved sequences '@#@' or '%&%'!");
       } else {
-        openToastLabel("Incorrect username/password!");
+        String response = client.attemptLogin(loginUsername.getText(), loginPassword.getText());
+        System.out.println("Login response: " + response);
+        // change GUI to let user choose chatroom or create one
+        if (response.equalsIgnoreCase("success")) {
+          myUsername = loginUsername.getText();
+          openChatSelectionScreen();
+        } else if (response.equalsIgnoreCase("incorrect")) {
+          openToastLabel("Incorrect username/password!");
+        } else {
+          openToastLabel("This user already logged in!");
+        }
       }
     }
   }
@@ -88,29 +97,35 @@ public class ClientGUI {
     @Override
     public void actionPerformed(ActionEvent e) {
       // send register username and password
-      String response = client.attemptRegister(registerUsername.getText(), registerPassword.getText());
-      System.out.println("Register response: " + response);
-      if (response.equalsIgnoreCase("success")) {
-        myUsername = registerUsername.getText();
-        openChatSelectionScreen();
+      if (registerUsername.getText().length() == 0 || registerPassword.getText().length() == 0) {
+        openToastLabel("Provide username and password!");
+      } else if (registerUsername.getText().contains("@#@") || registerUsername.getText().contains("%&%")
+              || registerPassword.getText().contains("@#@") || registerPassword.getText().contains("%&%")) {
+        openToastLabel("Do not use special reserved sequences '@#@' or '%&%'!");
       } else {
-        openToastLabel("Already existing username!");
+        String response = client.attemptRegister(registerUsername.getText(), registerPassword.getText());
+        System.out.println("Register response: " + response);
+        if (response.equalsIgnoreCase("success")) {
+          myUsername = registerUsername.getText();
+          openChatSelectionScreen();
+        } else {
+          openToastLabel("Already existing username!");
+        }
       }
     }
   }
 
   public void openToastLabel(String message) {
-    toastLabel = new JLabel(message);
-    toastLabel.setForeground(Color.red);
-    panel.add(toastLabel);
+    JLabel newToast = new JLabel(message);
+    newToast.setForeground(Color.red);
+    panel.add(newToast);
     frame.pack();
-    ActionListener listener = new ActionListener() {
-      public void actionPerformed(ActionEvent event) {
-        panel.remove(toastLabel);
-        frame.pack();
-      }
+    ActionListener listener = event -> {
+      panel.remove(newToast);
+      frame.pack();
+      frame.repaint();
     };
-    Timer timer = new Timer(2000, listener);
+    Timer timer = new Timer(3000, listener);
     timer.setRepeats(false);
     timer.start();
   }
@@ -119,13 +134,19 @@ public class ClientGUI {
     @Override
     public void actionPerformed(ActionEvent e) {
       chatroomName = joinChatField.getText();
-      String response = client.attemptJoinChat(chatroomName);
-      if (response.equalsIgnoreCase("success")) {
-        openChatroomScreen();
-      } else { // lookup server returns "nonexistent"
-        openToastLabel("Chatroom name does not exist!");
+      if (chatroomName.length() == 0) {
+        openToastLabel("Provide a chatroom name!");
+      } else if (chatroomName.contains("@#@") || chatroomName.contains("%&%")) {
+        openToastLabel("Do not use special reserved sequences '@#@' or '%&%'!");
+      } else {
+        String response = client.attemptJoinChat(chatroomName);
+        if (response.equalsIgnoreCase("success")) {
+          openChatroomScreen();
+        } else { // lookup server returns "nonexistent"
+          openToastLabel("Chatroom name does not exist!");
+        }
+        System.out.println("Join chatroom response: " + response);
       }
-      System.out.println("Join chatroom response: " + response);
     }
   }
 
@@ -133,20 +154,31 @@ public class ClientGUI {
     @Override
     public void actionPerformed(ActionEvent e) {
       chatroomName = createChatField.getText();
-      String response = client.attemptCreateChat(chatroomName);
-      if (response.equalsIgnoreCase("success")) {
-        openChatroomScreen();
-      } else { // when lookup server returns "exists"
-        openToastLabel("A chatroom already has that name!");
+      if (chatroomName.length() == 0) {
+        openToastLabel("Provide a chatroom name!");
+      } else if (chatroomName.contains("@#@") || chatroomName.contains("%&%")) {
+        openToastLabel("Do not use special reserved sequences '@#@' or '%&%'!");
+      } else {
+        String response = client.attemptCreateChat(chatroomName);
+        if (response.equalsIgnoreCase("success")) {
+          openChatroomScreen();
+        } else { // when lookup server returns "exists"
+          openToastLabel("A chatroom already has that name!");
+        }
+        System.out.println("Create chatroom response: " + response);
       }
-      System.out.println("Create chatroom response: " + response);
     }
   }
 
   public class LogOutButtonListener implements ActionListener {
     @Override
     public void actionPerformed(ActionEvent e) {
-      openLoginRegisterScreen();
+      String response = client.attemptLogout();
+      if (response.equalsIgnoreCase("success")) {
+        openLoginRegisterScreen();
+      } else {
+        System.out.println("Could not log out user.");
+      }
     }
   }
 

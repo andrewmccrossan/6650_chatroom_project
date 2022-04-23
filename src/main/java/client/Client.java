@@ -12,6 +12,7 @@ import java.net.Socket;
 import java.text.SimpleDateFormat;
 import java.util.ArrayList;
 import java.util.Date;
+import java.util.Random;
 
 import gui.ClientGUI;
 import server.ChatroomInfo;
@@ -21,11 +22,17 @@ import server.LookUpServer;
 public class Client {
 
   long clientID;
+  String proposerLookUphostname;
+  int proposerLookUp0Port;
+  int proposerLookUp1Port;
   ClientGUI clientGUI;
-  int[] serverPorts;
+  int[] proposerLookUpPorts;
+  int unusedLookUpPort;
   Socket socket;
   BufferedReader reader;
   BufferedWriter writer;
+  String anotherLiveProposerAddress;
+  int anotherLiveProposerPort;
   String username;
   ChatroomServer hostedChatroomServer;
   InetAddress groupIP;
@@ -38,28 +45,33 @@ public class Client {
   Thread multicastMessageReceiverThread;
   MulticastMessageReceiver currentMulticastMessageReceiver;
 
+  //TODO - delete this
+//  int dummy = 0;
+
   public Client(long clientID) {
     this.clientID = clientID;
     this.username = null;
-    this.serverPorts = new int[]{ 10000, 49152, 49153, 49154, 49155 };
+    this.proposerLookUphostname = "localhost"; // TODO - maybe don't hardcode this.
+    this.proposerLookUpPorts = new int[]{ 10000, 53333 };
     this.mostRecentChatroomName = null;
     this.multicastMessageReceiverThread = null;
-    try {
-      // set up socket to LookUp server
-      // TODO - anonymize hostname and ports
-      Socket socket = new Socket("localhost", 10000);
-      BufferedWriter writer = new BufferedWriter(
-              new OutputStreamWriter(socket.getOutputStream()));
-      BufferedReader reader = new BufferedReader(
-              new InputStreamReader(socket.getInputStream()));
-      this.socket = socket;
-      this.reader = reader;
-      this.writer = writer;
-
-//      reader.close();
-//      writer.close();
-    } catch (IOException e) {
-      e.printStackTrace();
+    // set up socket to LookUp server
+    for (int i = 0; i < this.proposerLookUpPorts.length; i++) {
+      try {
+        Socket socket = new Socket(this.proposerLookUphostname, this.proposerLookUpPorts[i]);
+        BufferedWriter writer = new BufferedWriter(
+                new OutputStreamWriter(socket.getOutputStream()));
+        BufferedReader reader = new BufferedReader(
+                new InputStreamReader(socket.getInputStream()));
+        this.socket = socket;
+        this.reader = reader;
+        this.writer = writer;
+        // set the unusedLookUpPort to the other port in case this one fails
+        this.unusedLookUpPort = proposerLookUpPorts[Math.abs(i-1)];
+        break;
+      } catch (IOException e) {
+        e.printStackTrace();
+      }
     }
   }
 
@@ -70,26 +82,64 @@ public class Client {
   public String attemptLogin(String username, String password) {
     try {
       this.username = username;
-      this.writer.write("login " + username + " " + password);
+      this.writer.write("login@#@" + username + "@#@" + password);
       this.writer.newLine();
       this.writer.flush();
       return this.reader.readLine();
     } catch (IOException e) {
+      // use another server
+      useAnotherServer();
+      return attemptLogin(username, password);
+    }
+  }
+
+  public void useAnotherServer() {
+    // attempt to connect to another proposer
+    Socket socket = null;
+    try {
+      socket = new Socket(proposerLookUphostname, this.unusedLookUpPort);
+      BufferedWriter writer = new BufferedWriter(
+              new OutputStreamWriter(socket.getOutputStream()));
+      BufferedReader reader = new BufferedReader(
+              new InputStreamReader(socket.getInputStream()));
+      this.socket = socket;
+      this.reader = reader;
+      this.writer = writer;
+    } catch (IOException e) {
       e.printStackTrace();
-      return null;
     }
   }
 
   public String attemptRegister(String username, String password) {
     try {
+//      System.out.println("PORRRRRRT: " + this.socket.getPort());
+//      if (dummy == 1) {
+//        dummy++;
+//        throw new IOException();
+//      }
+//      dummy++;
       this.username = username;
-      this.writer.write("register " + username + " " + password);
+      this.writer.write("register@#@" + username + "@#@" + password);
       this.writer.newLine();
       this.writer.flush();
       return this.reader.readLine();
     } catch (IOException e) {
-      e.printStackTrace();
-      return null;
+      // use another server
+      useAnotherServer();
+      return attemptRegister(username, password);
+    }
+  }
+
+  public String attemptLogout() {
+    try {
+      this.writer.write("logout@#@" + this.username);
+      this.writer.newLine();
+      this.writer.flush();
+      return this.reader.readLine();
+    } catch (IOException e) {
+      // use another server
+      useAnotherServer();
+      return attemptLogout();
     }
   }
 
@@ -152,11 +202,11 @@ public class Client {
 
   public String attemptCreateChat(String chatName) {
     try {
-      this.writer.write("createChat " + chatName + " " + username);
+      this.writer.write("createChat@#@" + chatName + "@#@" + username);
       this.writer.newLine();
       this.writer.flush();
       String response = this.reader.readLine();
-      String[] responseArray = response.split(" ");
+      String[] responseArray = response.split("@#@");
       if (responseArray[0].equalsIgnoreCase("success")) {
         this.mostRecentChatroomName = chatName;
         if (this.currentMulticastMessageReceiver != null) {
@@ -168,7 +218,7 @@ public class Client {
         this.hostedChatroomServer = new ChatroomServer(newID, this, groupIP, chatName);
         this.chatroomServerPort = this.hostedChatroomServer.portForClients;
         // tell LookUpServer what port this chatroom server is listening for new user connections on
-        this.writer.write("updateChatConnectionPort " + this.chatroomServerPort + " " + chatName);
+        this.writer.write("updateChatConnectionPort@#@" + this.chatroomServerPort + "@#@" + chatName);
         this.writer.newLine();
         this.writer.flush();
         String updateResponse = this.reader.readLine();
@@ -183,14 +233,15 @@ public class Client {
         return responseArray[0];
       }
     } catch (IOException e) {
-      e.printStackTrace();
-      return null;
+      // use another server
+      useAnotherServer();
+      return attemptCreateChat(chatName);
     }
   }
 
   public ArrayList<String[]> attemptGetNumUsersInChatrooms() {
     try {
-      this.writer.write("getNumUsers ");
+      this.writer.write("getNumUsers@#@");
       this.writer.newLine();
       this.writer.flush();
       String response = this.reader.readLine();
@@ -204,18 +255,19 @@ public class Client {
       }
       return namesNumbers;
     } catch (IOException e) {
-      e.printStackTrace();
-      return new ArrayList<>();
+      // use another server
+      useAnotherServer();
+      return attemptGetNumUsersInChatrooms();
     }
   }
 
   public String attemptJoinChat(String chatName) {
     try {
-      this.writer.write("joinChat " + chatName + " " + username);
+      this.writer.write("joinChat@#@" + chatName + "@#@" + username);
       this.writer.newLine();
       this.writer.flush();
       String response = this.reader.readLine();
-      String[] responseArray = response.split(" ");
+      String[] responseArray = response.split("@#@");
       if (responseArray[0].equalsIgnoreCase("success")) {
         if (this.currentMulticastMessageReceiver != null) {
           this.currentMulticastMessageReceiver.turnOff();
@@ -238,14 +290,15 @@ public class Client {
         return responseArray[0];
       }
     } catch (IOException e) {
-      e.printStackTrace();
-      return null;
+      // use another server
+      useAnotherServer();
+      return attemptJoinChat(chatName);
     }
   }
 
   public ArrayList<String> attemptGetUsersInChatroom(String chatName) {
     try {
-      this.writer.write("getMembers " + chatName);
+      this.writer.write("getMembers@#@" + chatName);
       this.writer.newLine();
       this.writer.flush();
       String response = this.reader.readLine();
@@ -260,8 +313,9 @@ public class Client {
       }
       return members;
     } catch (IOException e) {
-      e.printStackTrace();
-      return new ArrayList<>();
+      // use another server
+      useAnotherServer();
+      return attemptGetUsersInChatroom(chatName);
     }
   }
 
@@ -297,14 +351,6 @@ public class Client {
    * @param args
    */
   public static void main(String[] args) {
-    String hostname = "localhost";
-//    if (args.length != 1) {
-//      System.out.println(Client.currTime() + "Using localhost.");
-//    } else {
-//      hostname = args[0];
-//      System.out.println(Client.currTime() + "Using " + hostname);
-//    }
-
     // Create the ClientGUI
     long clientID = new Date().getTime();
     Client client = new Client(clientID);

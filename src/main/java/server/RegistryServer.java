@@ -9,29 +9,63 @@ import java.net.InetAddress;
 import java.net.ServerSocket;
 import java.net.Socket;
 import java.util.ArrayList;
+import java.util.Collections;
+import java.util.Iterator;
+import java.util.List;
 
 public class RegistryServer {
 
   ServerSocket serverSocket;
-  public ArrayList<PaxosServerInfo> paxosServerInfos;
+  public List paxosServerInfos;
+  public int myPort;
+  public String myAddress;
 
-  public RegistryServer(int port) {
+  public RegistryServer() {
     try {
-      this.paxosServerInfos = new ArrayList<>();
-      this.serverSocket = new ServerSocket(port);
-      waitForNewServers();
+//      this.paxosServerInfos = new ArrayList<>();
+      this.paxosServerInfos = Collections.synchronizedList(new ArrayList());
+//      this.serverSocket = new ServerSocket(port);
+      this.serverSocket = new ServerSocket(0);
+      this.myPort = this.serverSocket.getLocalPort();
+      this.myAddress = this.serverSocket.getInetAddress().getHostAddress();
+      new Thread(new NewServerWaiter()).start();
+//      waitForNewServers();
     } catch (IOException e) {
       e.printStackTrace();
     }
   }
 
-  public void waitForNewServers() throws IOException {
-    while (true) {
-      Socket newServerSocket = this.serverSocket.accept();
-      NewServerSocketHandler newServerSocketHandler = new NewServerSocketHandler(newServerSocket);
-      new Thread(newServerSocketHandler).start();
+  private class NewServerWaiter implements Runnable {
+    @Override
+    public void run() {
+      while (true) {
+        Socket newServerSocket = null;
+        try {
+          newServerSocket = serverSocket.accept();
+          NewServerSocketHandler newServerSocketHandler = new NewServerSocketHandler(newServerSocket);
+          new Thread(newServerSocketHandler).start();
+        } catch (IOException e) {
+          e.printStackTrace();
+        }
+      }
     }
   }
+
+  public String getRegistryAddress() {
+    return this.myAddress;
+  }
+
+  public int getRegistryPort() {
+    return this.myPort;
+  }
+
+//  public void waitForNewServers() throws IOException {
+//    while (true) {
+//      Socket newServerSocket = this.serverSocket.accept();
+//      NewServerSocketHandler newServerSocketHandler = new NewServerSocketHandler(newServerSocket);
+//      new Thread(newServerSocketHandler).start();
+//    }
+//  }
 
   private class NewServerSocketHandler implements Runnable {
     private final Socket newServerSocket;
@@ -53,18 +87,28 @@ public class RegistryServer {
                 new OutputStreamWriter(this.newServerSocket.getOutputStream()));
         PaxosServerInfo newPaxosServerInfo = new PaxosServerInfo(this.newServerAddress,
                 this.newServerPort, this.newServerSocket, this.newServerWriter);
-        paxosServerInfos.add(newPaxosServerInfo);
-        System.out.println("Registry server accepted new server connection");
+//        paxosServerInfos.add(newPaxosServerInfo);
+//        System.out.println("Registry server accepted new server connection");
         String line = this.newServerReader.readLine();
         String[] messageArray = line.split("@#@");
         this.newServerAddress = messageArray[0];
         this.newServerPort = Integer.parseInt(messageArray[1]);
         this.newServerPaxosRole = messageArray[2];
-        System.out.println("in registry receiving connection with paxosRole: " + this.newServerPaxosRole);
         // Tell each server that has already connected to make a socket connection to the new server
-        for (PaxosServerInfo paxosServerInfo : paxosServerInfos) {
-          paxosServerInfo.writer.write("startConnection@#@" + this.newServerAddress + "@#@" + this.newServerPort + "@#@" + this.newServerPaxosRole);
+        synchronized (paxosServerInfos) {
+          Iterator i = paxosServerInfos.iterator();
+          while (i.hasNext()) {
+            PaxosServerInfo info = (PaxosServerInfo) i.next();
+            info.writer.write("startConnection@#@" + this.newServerAddress + "@#@" + this.newServerPort + "@#@" + this.newServerPaxosRole);
+            info.writer.newLine();
+            info.writer.flush();
+          }
         }
+//        for (PaxosServerInfo paxosServerInfo : paxosServerInfos) {
+//          System.out.println("sending startConnection");
+//          paxosServerInfo.writer.write("startConnection@#@" + this.newServerAddress + "@#@" + this.newServerPort + "@#@" + this.newServerPaxosRole);
+//        }
+        paxosServerInfos.add(newPaxosServerInfo);
       } catch (IOException e) {
         e.printStackTrace();
       }

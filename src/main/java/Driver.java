@@ -23,7 +23,6 @@ public class Driver {
       Client.main(arguments);
     } else {
       String[] arguments = Arrays.copyOfRange(args, 1, args.length);
-      // TODO - decide on two ports for the two proposer LookUpServers and hardcode those for client to try accessing randomly first try.
       LookUpServer.main(arguments);
     }
   }
