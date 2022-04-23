@@ -23,7 +23,7 @@ public class Driver {
       Client.main(arguments);
     } else {
       String[] arguments = Arrays.copyOfRange(args, 1, args.length);
-      LookUpServer.main(arguments); // TODO - switch to Server.main
+      LookUpServer.main(arguments);
     }
   }
 }
