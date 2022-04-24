@@ -23,6 +23,7 @@ server/RegistryServer$NewServerSocketHandler.class
 gui/ClientGUI$GetUsersInChatroomButtonListener.class
 server/LookUpServer$RegistryServerListener.class
 server/RegistryServer.class
+gui/ClientGUI$ChatroomLogOutButtonListener.class
 gui/SmartScroller.class
 server/ChatroomServer$ClientSocketHandler.class
 gui/ClientGUI$LoginButtonListener.class
@@ -32,5 +33,5 @@ client/Client$MulticastMessageReceiver.class
 client/Client.class
 server/LookUpServer$ClientSocketHandler$ChatroomListener.class
 gui/ClientGUI$RegisterButtonListener.class
+gui/ClientGUI$ChatSelectionLogOutButtonListener.class
 gui/ClientGUI$JoinChatButtonListener.class
-gui/ClientGUI$LogOutButtonListener.class

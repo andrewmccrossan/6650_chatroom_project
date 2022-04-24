@@ -112,12 +112,6 @@ public class Client {
 
   public String attemptRegister(String username, String password) {
     try {
-//      System.out.println("PORRRRRRT: " + this.socket.getPort());
-//      if (dummy == 1) {
-//        dummy++;
-//        throw new IOException();
-//      }
-//      dummy++;
       this.username = username;
       this.writer.write("register@#@" + username + "@#@" + password);
       this.writer.newLine();
@@ -130,21 +124,47 @@ public class Client {
     }
   }
 
-  public String attemptLogout() {
+  public String attemptChatSelectionLogout() {
     try {
-      this.writer.write("logout@#@" + this.username);
+      this.writer.write("chatSelectionLogout@#@" + this.username);
       this.writer.newLine();
       this.writer.flush();
       return this.reader.readLine();
     } catch (IOException e) {
       // use another server
       useAnotherServer();
-      return attemptLogout();
+      return attemptChatSelectionLogout();
+    }
+  }
+
+  public String attemptChatroomLogout() {
+    try {
+      this.chatRoomServerWriter.write("chatroomLogout@#@" + this.username);
+      this.chatRoomServerWriter.newLine();
+      this.chatRoomServerWriter.flush();
+      return "success";
+    } catch (IOException e) {
+      // use another server
+      useAnotherServer();
+      return attemptChatroomLogout();
+    }
+  }
+
+  public String attemptBackToChatSelection() {
+    try {
+      this.chatRoomServerWriter.write("backToChatSelection@#@" + this.username);
+      this.chatRoomServerWriter.newLine();
+      this.chatRoomServerWriter.flush();
+      return "success";
+    } catch (IOException e) {
+      // use another server
+      useAnotherServer();
+      return attemptBackToChatSelection();
     }
   }
 
   public String sendNewChatroomMessage(String message) {
-    message = "message" + this.username + "@#@" + message;
+    message = "message" + "@#@" + this.username + "@#@" + message;
     try {
       this.chatRoomServerWriter.write(message);
       this.chatRoomServerWriter.newLine();

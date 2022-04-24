@@ -170,10 +170,22 @@ public class ClientGUI {
     }
   }
 
-  public class LogOutButtonListener implements ActionListener {
+  public class ChatSelectionLogOutButtonListener implements ActionListener {
     @Override
     public void actionPerformed(ActionEvent e) {
-      String response = client.attemptLogout();
+      String response = client.attemptChatSelectionLogout();
+      if (response.equalsIgnoreCase("success")) {
+        openLoginRegisterScreen();
+      } else {
+        System.out.println("Could not log out user.");
+      }
+    }
+  }
+
+  public class ChatroomLogOutButtonListener implements ActionListener {
+    @Override
+    public void actionPerformed(ActionEvent e) {
+      String response = client.attemptChatroomLogout();
       if (response.equalsIgnoreCase("success")) {
         openLoginRegisterScreen();
       } else {
@@ -203,7 +215,12 @@ public class ClientGUI {
   public class BackToChatSelectionButtonListener implements ActionListener {
     @Override
     public void actionPerformed(ActionEvent e) {
-      openChatSelectionScreen();
+      String response = client.attemptBackToChatSelection();
+      if (response.equalsIgnoreCase("success")) {
+        openChatSelectionScreen();
+      } else {
+        System.out.println("Could not go back to chat selection screen.");
+      }
     }
   }
 
@@ -259,7 +276,7 @@ public class ClientGUI {
     this.backToChatSelectionButton = new JButton("Go Back To Chatroom Selection Screen");
     this.backToChatSelectionButton.addActionListener(new BackToChatSelectionButtonListener());
     this.logoutButton = new JButton("Log Out");
-    this.logoutButton.addActionListener(new LogOutButtonListener()); // TODO - maybe have a differnt button listener for this
+    this.logoutButton.addActionListener(new ChatroomLogOutButtonListener()); // TODO - maybe have a differnt button listener for this
     addComponentToPanel(this.backToChatSelectionButton);
     addComponentToPanel(this.logoutButton);
 
@@ -301,7 +318,7 @@ public class ClientGUI {
     }
 
     logoutButton = new JButton("Log Out");
-    logoutButton.addActionListener(new LogOutButtonListener());
+    logoutButton.addActionListener(new ChatSelectionLogOutButtonListener());
 
     addComponentToPanel(joinChatLabel);
     addComponentToPanel(createChatLabel);
