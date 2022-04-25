@@ -10,8 +10,13 @@ import javax.swing.*;
 
 import client.Client;
 
+/**
+ * Class to handle all of the visual aspects of the client's application. A GUI is created and
+ * maintained using Java Swing. This GUI handles login/register, chat selection, and chatroom content.
+ */
 public class ClientGUI {
 
+  // Vars for construction / login / register
   public Client client;
   public JFrame frame;
   public JPanel panel;
@@ -32,6 +37,7 @@ public class ClientGUI {
   public JLabel registerPasswordLabel;
   public JLabel toastLabel;
 
+  // Vars for Chat selection screen
   public JLabel joinChatLabel;
   public JTextField joinChatField;
   public JButton joinChatButton;
@@ -46,6 +52,7 @@ public class ClientGUI {
   public JScrollPane allChatroomMembersScrollPane;
   public JButton logoutButton;
 
+  // Vars for Chatroom screen
   public String chatroomName;
   public JLabel chatroomLabel;
   public JTextArea chatroomTextArea;
@@ -60,6 +67,12 @@ public class ClientGUI {
   public JButton getUsersInChatroomButton;
   public JButton backToChatSelectionButton;
 
+  /**
+   * Constructor for Client GUI that handles all of the visual aspects of the GUI using Java Swing.
+   * This GUI handles all login/register, chat selection, and chatroom. All ChatroomServer GUI logic
+   * is in the ChatroomServerGUI.
+   * @param client
+   */
   public ClientGUI(Client client) {
     this.client = client;
     this.frame = new JFrame();
@@ -68,6 +81,14 @@ public class ClientGUI {
     openLoginRegisterScreen();
   }
 
+  /**
+   * Listener for the Login button on the Login/Register screen. Checks for valid text put in
+   * username and password boxes and then consults a LookUpServer to see if username/password are
+   * correct. If they are incorrect, a toast message pops up indicating that, and if they are correct
+   * but that user is already logged in, then a toast message pops indicating that. If username/password
+   * are correct and user is not already logged in, then chat selection screen is opened and user is
+   * logged in.
+   */
   public class LoginButtonListener implements ActionListener {
     @Override
     public void actionPerformed(ActionEvent e) {
@@ -76,11 +97,12 @@ public class ClientGUI {
         openToastLabel("Provide username and password!");
       } else if (loginUsername.getText().contains("@#@") || loginUsername.getText().contains("%&%")
               || loginPassword.getText().contains("@#@") || loginPassword.getText().contains("%&%")) {
+        // These are special reserved sequences since all communication is through sockets and
+        // delineators between content must be kept unique.
         openToastLabel("Do not use special reserved sequences '@#@' or '%&%'!");
       } else {
         String response = client.attemptLogin(loginUsername.getText(), loginPassword.getText());
-        System.out.println("Login response: " + response);
-        // change GUI to let user choose chatroom or create one
+        // change GUI to open chat selection screen
         if (response.equalsIgnoreCase("success")) {
           myUsername = loginUsername.getText();
           openChatSelectionScreen();
@@ -93,6 +115,12 @@ public class ClientGUI {
     }
   }
 
+  /**
+   * Listener for the Register button on the Login/Register screen. Checks for valid text put in
+   * username and password boxes and then consults a LookUpServer to see if username is already in
+   * use. If it is already in use, a toast message pops up indicating that. If username is new and
+   * password is valid, then chat selection screen is opened and user is logged in.
+   */
   public class RegisterButtonListener implements ActionListener {
     @Override
     public void actionPerformed(ActionEvent e) {
@@ -101,10 +129,11 @@ public class ClientGUI {
         openToastLabel("Provide username and password!");
       } else if (registerUsername.getText().contains("@#@") || registerUsername.getText().contains("%&%")
               || registerPassword.getText().contains("@#@") || registerPassword.getText().contains("%&%")) {
+        // These are special reserved sequences since all communication is through sockets and
+        // delineators between content must be kept unique.
         openToastLabel("Do not use special reserved sequences '@#@' or '%&%'!");
       } else {
         String response = client.attemptRegister(registerUsername.getText(), registerPassword.getText());
-        System.out.println("Register response: " + response);
         if (response.equalsIgnoreCase("success")) {
           myUsername = registerUsername.getText();
           openChatSelectionScreen();
@@ -115,11 +144,17 @@ public class ClientGUI {
     }
   }
 
+  /**
+   * Display a toast message, which in this case is a bright red label that disappears after a fixed
+   * amount of time. It displays the message given.
+   * @param message
+   */
   public void openToastLabel(String message) {
     JLabel newToast = new JLabel(message);
     newToast.setForeground(Color.red);
     panel.add(newToast);
     frame.pack();
+    // An action listener is called after a timer to remove the toast message.
     ActionListener listener = event -> {
       panel.remove(newToast);
       frame.pack();
@@ -130,6 +165,12 @@ public class ClientGUI {
     timer.start();
   }
 
+  /**
+   * Listener for Join Chat button. Checks if contents of associated checkbox are valid and then
+   * checks if a chatroom by the given name exists. If it exists, then the chatroom screen is opened
+   * and the user has joined that chat. If it does not exist, then a toast message is opened indicating
+   * that it does not exist.
+   */
   public class JoinChatButtonListener implements ActionListener {
     @Override
     public void actionPerformed(ActionEvent e) {
@@ -137,6 +178,8 @@ public class ClientGUI {
       if (chatroomName.length() == 0) {
         openToastLabel("Provide a chatroom name!");
       } else if (chatroomName.contains("@#@") || chatroomName.contains("%&%")) {
+        // These are special reserved sequences since all communication is through sockets and
+        // delineators between content must be kept unique.
         openToastLabel("Do not use special reserved sequences '@#@' or '%&%'!");
       } else {
         String response = client.attemptJoinChat(chatroomName);
@@ -145,11 +188,16 @@ public class ClientGUI {
         } else { // lookup server returns "nonexistent"
           openToastLabel("Chatroom name does not exist!");
         }
-        System.out.println("Join chatroom response: " + response);
       }
     }
   }
 
+  /**
+   * Listener for Join Chat button. Checks if contents of associated checkbox are valid and then
+   * checks if a chatroom by the given name exists. If it exists, then the chatroom screen is opened
+   * and the user has joined that chat. If it does not exist, then a toast message is opened indicating
+   * that it does not exist.
+   */
   public class CreateChatButtonListener implements ActionListener {
     @Override
     public void actionPerformed(ActionEvent e) {
@@ -157,6 +205,8 @@ public class ClientGUI {
       if (chatroomName.length() == 0) {
         openToastLabel("Provide a chatroom name!");
       } else if (chatroomName.contains("@#@") || chatroomName.contains("%&%")) {
+        // These are special reserved sequences since all communication is through sockets and
+        // delineators between content must be kept unique.
         openToastLabel("Do not use special reserved sequences '@#@' or '%&%'!");
       } else {
         String response = client.attemptCreateChat(chatroomName);
@@ -165,15 +215,26 @@ public class ClientGUI {
         } else { // when lookup server returns "exists"
           openToastLabel("A chatroom already has that name!");
         }
-        System.out.println("Create chatroom response: " + response);
       }
     }
   }
 
-  public class LogOutButtonListener implements ActionListener {
+  public class ChatSelectionLogOutButtonListener implements ActionListener {
     @Override
     public void actionPerformed(ActionEvent e) {
-      String response = client.attemptLogout();
+      String response = client.attemptChatSelectionLogout();
+      if (response.equalsIgnoreCase("success")) {
+        openLoginRegisterScreen();
+      } else {
+        System.out.println("Could not log out user.");
+      }
+    }
+  }
+
+  public class ChatroomLogOutButtonListener implements ActionListener {
+    @Override
+    public void actionPerformed(ActionEvent e) {
+      String response = client.attemptChatroomLogout();
       if (response.equalsIgnoreCase("success")) {
         openLoginRegisterScreen();
       } else {
@@ -185,7 +246,14 @@ public class ClientGUI {
   public class ChatroomNewMessageButtonListener implements ActionListener {
     @Override
     public void actionPerformed(ActionEvent e) {
-      String response = client.sendNewChatroomMessage(chatroomNewMessageField.getText());
+      String newMessage = chatroomNewMessageField.getText();
+      if (newMessage.length() == 0) {
+        openToastLabel("Write a message to send!");
+      } else if (newMessage.contains("@#@") || newMessage.contains("%&%") || newMessage.contains("~##~")) {
+        openToastLabel("Do not use special reserved sequences '@#@', '%&%', or '~##~'!");
+      } else {
+        String response = client.sendNewChatroomMessage(chatroomNewMessageField.getText());
+      }
     }
   }
 
@@ -203,7 +271,12 @@ public class ClientGUI {
   public class BackToChatSelectionButtonListener implements ActionListener {
     @Override
     public void actionPerformed(ActionEvent e) {
-      openChatSelectionScreen();
+      String response = client.attemptBackToChatSelection();
+      if (response.equalsIgnoreCase("success")) {
+        openChatSelectionScreen();
+      } else {
+        System.out.println("Could not go back to chat selection screen.");
+      }
     }
   }
 
@@ -259,7 +332,7 @@ public class ClientGUI {
     this.backToChatSelectionButton = new JButton("Go Back To Chatroom Selection Screen");
     this.backToChatSelectionButton.addActionListener(new BackToChatSelectionButtonListener());
     this.logoutButton = new JButton("Log Out");
-    this.logoutButton.addActionListener(new LogOutButtonListener());
+    this.logoutButton.addActionListener(new ChatroomLogOutButtonListener()); // TODO - maybe have a differnt button listener for this
     addComponentToPanel(this.backToChatSelectionButton);
     addComponentToPanel(this.logoutButton);
 
@@ -301,7 +374,7 @@ public class ClientGUI {
     }
 
     logoutButton = new JButton("Log Out");
-    logoutButton.addActionListener(new LogOutButtonListener());
+    logoutButton.addActionListener(new ChatSelectionLogOutButtonListener());
 
     addComponentToPanel(joinChatLabel);
     addComponentToPanel(createChatLabel);

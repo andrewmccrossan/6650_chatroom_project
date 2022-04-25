@@ -22,14 +22,11 @@ public class RegistryServer {
 
   public RegistryServer() {
     try {
-//      this.paxosServerInfos = new ArrayList<>();
       this.paxosServerInfos = Collections.synchronizedList(new ArrayList());
-//      this.serverSocket = new ServerSocket(port);
       this.serverSocket = new ServerSocket(0);
       this.myPort = this.serverSocket.getLocalPort();
       this.myAddress = this.serverSocket.getInetAddress().getHostAddress();
       new Thread(new NewServerWaiter()).start();
-//      waitForNewServers();
     } catch (IOException e) {
       e.printStackTrace();
     }
@@ -58,14 +55,6 @@ public class RegistryServer {
   public int getRegistryPort() {
     return this.myPort;
   }
-
-//  public void waitForNewServers() throws IOException {
-//    while (true) {
-//      Socket newServerSocket = this.serverSocket.accept();
-//      NewServerSocketHandler newServerSocketHandler = new NewServerSocketHandler(newServerSocket);
-//      new Thread(newServerSocketHandler).start();
-//    }
-//  }
 
   private class NewServerSocketHandler implements Runnable {
     private final Socket newServerSocket;
@@ -104,10 +93,6 @@ public class RegistryServer {
             info.writer.flush();
           }
         }
-//        for (PaxosServerInfo paxosServerInfo : paxosServerInfos) {
-//          System.out.println("sending startConnection");
-//          paxosServerInfo.writer.write("startConnection@#@" + this.newServerAddress + "@#@" + this.newServerPort + "@#@" + this.newServerPaxosRole);
-//        }
         paxosServerInfos.add(newPaxosServerInfo);
       } catch (IOException e) {
         e.printStackTrace();

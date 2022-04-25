@@ -1,5 +1,6 @@
 package server;
 
+import java.awt.*;
 import java.io.BufferedReader;
 import java.io.BufferedWriter;
 import java.io.IOException;
@@ -28,13 +29,23 @@ public class ChatroomServer {
   public InetAddress group;
   public DatagramSocket datagramSocketForMulticast;
   public byte[] buffer;
+
+  // heartbeat vars for keeping in contact with LookUpServer
+  public String heartbeatAddress;
+  public int heartbeatPort;
+  public Socket heartbeatSocket;
+  public BufferedReader heartbeatReader;
+  public BufferedWriter heartbeatWriter;
   public Socket socketForLookUpServer; // TODO - for receiving heartbeats from LookUpServer.
 
-  public ChatroomServer(int ID, Client hostClient, String groupIP, String chatroomName) {
+  public ChatroomServer(int ID, Client hostClient, String groupIP, String chatroomName,
+                        String heartbeatAddress, int heartbeatPort) {
     this.ID = ID;
     this.chatroomName = chatroomName;
     this.hostClient = hostClient;
     this.chatroomServerGUI = new ChatroomServerGUI(this);
+    this.heartbeatAddress = heartbeatAddress;
+    this.heartbeatPort = heartbeatPort;
     try {
       this.group = InetAddress.getByName(groupIP);
     } catch (UnknownHostException e) {
@@ -45,6 +56,14 @@ public class ChatroomServer {
       this.portForClients = this.serverSocketForClients.getLocalPort();
       NewUserConnector newUserConnector = new NewUserConnector();
       new Thread(newUserConnector).start();
+    } catch (IOException e) {
+      e.printStackTrace();
+    }
+    try {
+      this.heartbeatSocket = new Socket(heartbeatAddress, heartbeatPort);
+      System.out.println("Connected to lookup for heartbeat");
+      HeartbeatHandler heartbeatHandler = new HeartbeatHandler(this.heartbeatSocket);
+      new Thread(heartbeatHandler).start();
     } catch (IOException e) {
       e.printStackTrace();
     }
@@ -66,6 +85,48 @@ public class ChatroomServer {
     }
   }
 
+  public class HeartbeatHandler implements Runnable {
+
+    public Socket socket;
+
+    public HeartbeatHandler(Socket socket) {
+      this.socket = socket;
+    }
+
+    @Override
+    public void run() {
+      try {
+        heartbeatReader = new BufferedReader(new InputStreamReader(socket.getInputStream()));
+        heartbeatWriter = new BufferedWriter(new OutputStreamWriter(socket.getOutputStream()));
+      } catch (IOException e) {
+        e.printStackTrace();
+      }
+      while (true) {
+        try {
+          String line = heartbeatReader.readLine();
+          String[] messageArray = line.split("@#@");
+          if (messageArray[0].equalsIgnoreCase("heartbeat")) {
+            // don't do anything since the LookUp server knows if this message didn't go through
+            System.out.println("RECEIVED heartbeat");
+          } else if (messageArray[0].equalsIgnoreCase("removeGUI")) {
+            chatroomServerGUI.removeFrame();
+          }
+        } catch (IOException e) {
+          e.printStackTrace();
+        }
+      }
+    }
+  }
+
+  public void replenishLogDisplay(String[] oldMessages) {
+    for (String fullMessage : oldMessages) {
+      String[] messageInfo = fullMessage.split("@#@");
+      String sender = messageInfo[0];
+      String actualMessage = messageInfo[1];
+      chatroomServerGUI.displayNewMessage(sender, actualMessage);
+    }
+  }
+
   public void multicastMessage(String message) {
     try {
       datagramSocketForMulticast = new DatagramSocket();
@@ -74,8 +135,8 @@ public class ChatroomServer {
       DatagramPacket packet = new DatagramPacket(buffer, buffer.length, group, 4446);
       datagramSocketForMulticast.send(packet);
       datagramSocketForMulticast.close();
-    } catch (SocketException e) {
-      e.printStackTrace();
+    } catch (SocketException se) {
+      se.printStackTrace();
     } catch (IOException e) {
       e.printStackTrace();
     }
@@ -93,16 +154,76 @@ public class ChatroomServer {
       this.clientPort = this.clientSocket.getPort();
     }
 
-    private String handleMessage(String message) {
+    private void handleMessage(String sender, String actualMessage) {
       // multicast to all connected clients
+      String message = sender + "@#@" + actualMessage;
       multicastMessage(message);
-      String[] fullMessage = message.split("@#@");
-      String sender = fullMessage[0];
-      String actualMessage = fullMessage[1];
+//      String[] fullMessage = message.split("@#@");
+//      String sender = fullMessage[0];
+//      String actualMessage = fullMessage[1];
+      try {
+        System.out.println("In handleMessage sending: " + sender + ": " + actualMessage);
+        heartbeatWriter.write("messageSent@#@" + sender + "@#@" + actualMessage);
+        heartbeatWriter.newLine();
+        heartbeatWriter.flush();
+      } catch (IOException e) {
+        e.printStackTrace();
+      }
       chatroomServerGUI.displayNewMessage(sender, actualMessage);
-      return "success";
-      // TODO - notify LookUpServer of the message sent
+//      return "success";
+    }
 
+    private void handleChatroomLogout(String leaverUsername) {
+      if (leaverUsername.equalsIgnoreCase(hostClient.username)) {
+        try {
+          System.out.println("In handleChatroomLogout for myself the host " + leaverUsername);
+          heartbeatWriter.write("hostChatroomLogout" + "@#@" + leaverUsername);
+          heartbeatWriter.newLine();
+          heartbeatWriter.flush();
+        } catch (IOException e) {
+          e.printStackTrace();
+        }
+      } else {
+        try {
+          System.out.println("In handleChatroomLogout sending: " + leaverUsername);
+          heartbeatWriter.write("chatroomLogout@#@" + leaverUsername);
+          heartbeatWriter.newLine();
+          heartbeatWriter.flush();
+        } catch (IOException e) {
+          e.printStackTrace();
+        }
+      }
+    }
+
+    private void handleBackToChatSelection(String leaverUsername) {
+      if (leaverUsername.equalsIgnoreCase(hostClient.username)) {
+        try {
+          System.out.println("In handleBackToChatSelection sending: " + leaverUsername);
+          heartbeatWriter.write("hostBackToChatSelection@#@" + leaverUsername);
+          heartbeatWriter.newLine();
+          heartbeatWriter.flush();
+        } catch (IOException e) {
+          e.printStackTrace();
+        }
+      } else {
+        try {
+          System.out.println("In handleBackToChatSelection sending: " + leaverUsername);
+          heartbeatWriter.write("backToChatSelection@#@" + leaverUsername);
+          heartbeatWriter.newLine();
+          heartbeatWriter.flush();
+        } catch (IOException e) {
+          e.printStackTrace();
+        }
+      }
+
+//      try {
+//        System.out.println("In handleBackToChatSelection sending: " + leaverUsername);
+//        heartbeatWriter.write("backToChatSelection@#@" + leaverUsername);
+//        heartbeatWriter.newLine();
+//        heartbeatWriter.flush();
+//      } catch (IOException e) {
+//        e.printStackTrace();
+//      }
     }
 
     public void run() {
@@ -122,13 +243,16 @@ public class ChatroomServer {
           if (line == null) {
             continue;
           }
-          String beginningSubstring = line.substring(0, 7);
-//          String[] messageArray = line.split(" ");
-          String response = null;
-          if (beginningSubstring.equalsIgnoreCase("message")) {
-            response = handleMessage(line.substring(7));
+//          String beginningSubstring = line.substring(0, 7);
+          String[] messageArray = line.split("@#@");
+          if (messageArray[0].equalsIgnoreCase("message")) {
+            handleMessage(messageArray[1], messageArray[2]);
+          } else if (messageArray[0].equalsIgnoreCase("chatroomLogout")) {
+            handleChatroomLogout(messageArray[1]);
+          } else if (messageArray[0].equalsIgnoreCase("backToChatSelection")) {
+            handleBackToChatSelection(messageArray[1]);
           } else {
-            response = "invalidRequestType";
+            System.out.println("invalidRequestType in chatroomserver: " + messageArray[0]);
           }
 //          writer.write(response);
 //          writer.newLine();
