@@ -108,11 +108,23 @@ public class ChatroomServer {
           if (messageArray[0].equalsIgnoreCase("heartbeat")) {
             // don't do anything since the LookUp server knows if this message didn't go through
             System.out.println("RECEIVED heartbeat");
+          } else if (messageArray[0].equalsIgnoreCase("removeGUI")) {
+            chatroomServerGUI.removeFrame();
           }
         } catch (IOException e) {
           e.printStackTrace();
         }
       }
+    }
+  }
+
+  public void replenishLogDisplay(String[] oldMessages) {
+    for (String fullMessage : oldMessages) {
+      String[] messageInfo = fullMessage.split("@#@");
+      String sender = messageInfo[0];
+      // todo - handle case of no messages in chatroom.
+      String actualMessage = messageInfo[1];
+      chatroomServerGUI.displayNewMessage(sender, actualMessage);
     }
   }
 
@@ -124,8 +136,8 @@ public class ChatroomServer {
       DatagramPacket packet = new DatagramPacket(buffer, buffer.length, group, 4446);
       datagramSocketForMulticast.send(packet);
       datagramSocketForMulticast.close();
-    } catch (SocketException e) {
-      e.printStackTrace();
+    } catch (SocketException se) {
+      se.printStackTrace();
     } catch (IOException e) {
       e.printStackTrace();
     }
@@ -163,25 +175,56 @@ public class ChatroomServer {
     }
 
     private void handleChatroomLogout(String leaverUsername) {
-      try {
-        System.out.println("In handleChatroomLogout sending: " + leaverUsername);
-        heartbeatWriter.write("chatroomLogout@#@" + leaverUsername);
-        heartbeatWriter.newLine();
-        heartbeatWriter.flush();
-      } catch (IOException e) {
-        e.printStackTrace();
+      if (leaverUsername.equalsIgnoreCase(hostClient.username)) {
+        try {
+          System.out.println("In handleChatroomLogout for myself the host " + leaverUsername);
+          heartbeatWriter.write("hostChatroomLogout" + "@#@" + leaverUsername);
+          heartbeatWriter.newLine();
+          heartbeatWriter.flush();
+        } catch (IOException e) {
+          e.printStackTrace();
+        }
+      } else {
+        try {
+          System.out.println("In handleChatroomLogout sending: " + leaverUsername);
+          heartbeatWriter.write("chatroomLogout@#@" + leaverUsername);
+          heartbeatWriter.newLine();
+          heartbeatWriter.flush();
+        } catch (IOException e) {
+          e.printStackTrace();
+        }
       }
     }
 
     private void handleBackToChatSelection(String leaverUsername) {
-      try {
-        System.out.println("In handleBackToChatSelection sending: " + leaverUsername);
-        heartbeatWriter.write("backToChatSelection@#@" + leaverUsername);
-        heartbeatWriter.newLine();
-        heartbeatWriter.flush();
-      } catch (IOException e) {
-        e.printStackTrace();
+      if (leaverUsername.equalsIgnoreCase(hostClient.username)) {
+        try {
+          System.out.println("In handleBackToChatSelection sending: " + leaverUsername);
+          heartbeatWriter.write("hostBackToChatSelection@#@" + leaverUsername);
+          heartbeatWriter.newLine();
+          heartbeatWriter.flush();
+        } catch (IOException e) {
+          e.printStackTrace();
+        }
+      } else {
+        try {
+          System.out.println("In handleBackToChatSelection sending: " + leaverUsername);
+          heartbeatWriter.write("backToChatSelection@#@" + leaverUsername);
+          heartbeatWriter.newLine();
+          heartbeatWriter.flush();
+        } catch (IOException e) {
+          e.printStackTrace();
+        }
       }
+
+//      try {
+//        System.out.println("In handleBackToChatSelection sending: " + leaverUsername);
+//        heartbeatWriter.write("backToChatSelection@#@" + leaverUsername);
+//        heartbeatWriter.newLine();
+//        heartbeatWriter.flush();
+//      } catch (IOException e) {
+//        e.printStackTrace();
+//      }
     }
 
     public void run() {

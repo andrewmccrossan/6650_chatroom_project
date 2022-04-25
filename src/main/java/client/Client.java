@@ -33,7 +33,7 @@ public class Client {
   BufferedWriter writer;
   String anotherLiveProposerAddress;
   int anotherLiveProposerPort;
-  String username;
+  public String username;
   ChatroomServer hostedChatroomServer;
   InetAddress groupIP;
   int chatroomServerPort;
@@ -44,9 +44,6 @@ public class Client {
   String mostRecentChatroomName;
   Thread multicastMessageReceiverThread;
   MulticastMessageReceiver currentMulticastMessageReceiver;
-
-  //TODO - delete this
-//  int dummy = 0;
 
   public Client(long clientID) {
     this.clientID = clientID;
@@ -199,9 +196,31 @@ public class Client {
           } else if (receivedMessage.substring(0, 10).equalsIgnoreCase("chatkey125")) {
             receivedMessage = receivedMessage.substring(10);
             String[] fullMessage = receivedMessage.split("@#@");
-            String sender = fullMessage[0];
-            String actualMessage = fullMessage[1];
-            clientGUI.displayNewMessage(sender, actualMessage);
+            if (fullMessage[0].equalsIgnoreCase("$@newHost@$")) {
+              String newHost = fullMessage[1];
+              if (username.equalsIgnoreCase(newHost)) {
+                attemptReCreateChat(mostRecentChatroomName);
+              }
+            } else if (fullMessage[0].equalsIgnoreCase("$@notifyRecreation@$")) {
+              String newServerHost = fullMessage[1];
+              String newServerAddress = fullMessage[2];
+              if (!username.equalsIgnoreCase(newServerHost)) {
+                System.out.println("Line 207 client is fullMessage2: " + fullMessage[2]);
+                // Documented bug in JDK that InetAddress.getByName() does not function properly
+                // with 127.0.0.1 since it does not recognize it as localhost without modifying local
+                // environ files.
+                if (newServerAddress.contains("127.0.0.1")) {
+                  newServerAddress = "localhost";
+                }
+                chatRoomServerAddress = InetAddress.getByName(newServerAddress);
+                chatroomServerPort = Integer.parseInt(fullMessage[3]);
+                connectSocketToChatroomServer();
+              }
+            } else {
+              String sender = fullMessage[0];
+              String actualMessage = fullMessage[1];
+              clientGUI.displayNewMessage(sender, actualMessage);
+            }
           }
         }
       } catch (IOException e) {
@@ -217,6 +236,61 @@ public class Client {
         e.printStackTrace();
       }
       multicastSocket.close();
+    }
+  }
+
+  public String attemptReCreateChat(String chatName) {
+    try {
+      this.writer.write("reCreateChat@#@" + chatName + "@#@" + username);
+      this.writer.newLine();
+      this.writer.flush();
+      String response = this.reader.readLine();
+      String[] responseArray = response.split("@#@");
+      if (responseArray[0].equalsIgnoreCase("success")) {
+//        this.mostRecentChatroomName = chatName;
+//        if (this.currentMulticastMessageReceiver != null) {
+//          this.currentMulticastMessageReceiver.turnOff();
+//        }
+        int reUsedID = Integer.parseInt(responseArray[1]);
+        String groupIP = responseArray[2];
+        String heartbeatAddress = responseArray[3];
+        int heartbeatPort = Integer.parseInt(responseArray[4]);
+
+        this.groupIP = InetAddress.getByName(groupIP);
+        this.hostedChatroomServer = new ChatroomServer(reUsedID, this, groupIP, chatName, heartbeatAddress, heartbeatPort);
+
+        this.chatroomServerPort = this.hostedChatroomServer.portForClients;
+        // tell LookUpServer what port this chatroom server is listening for new user connections on
+        this.writer.write("updateChatConnectionPort@#@" + this.chatroomServerPort + "@#@" + chatName);
+        this.writer.newLine();
+        this.writer.flush();
+        String updateResponse = this.reader.readLine();
+        if (updateResponse.equalsIgnoreCase("success")) {
+          this.writer.write("notifyMembersOfRecreation@#@" + this.chatRoomServerAddress + "@#@" + this.chatroomServerPort + "@#@" + chatName + "@#@" + username);
+          this.writer.newLine();
+          this.writer.flush();
+          String notifyResponse = this.reader.readLine();
+          this.writer.write("getAllChatroomMessages@#@" + chatName);
+          this.writer.newLine();
+          this.writer.flush();
+          String chatroomMessages = this.reader.readLine();
+          String[] splitUpChatroomMessages = chatroomMessages.split("~##~");
+          this.hostedChatroomServer.replenishLogDisplay(splitUpChatroomMessages);
+        }
+        this.chatRoomServerAddress = InetAddress.getByName("localhost"); // TODO - get address dynamically somehow (or maybe not since it will always be on localhost
+        connectSocketToChatroomServer();
+//        MulticastMessageReceiver multicastMessageReceiver = new MulticastMessageReceiver();
+//        this.currentMulticastMessageReceiver = multicastMessageReceiver;
+//        this.multicastMessageReceiverThread = new Thread(multicastMessageReceiver);
+//        this.multicastMessageReceiverThread.start();
+        return responseArray[0];
+      } else { // case where response is "exists"
+        return responseArray[0];
+      }
+    } catch (IOException e) {
+      // use another server
+      useAnotherServer();
+      return attemptReCreateChat(chatName);
     }
   }
 

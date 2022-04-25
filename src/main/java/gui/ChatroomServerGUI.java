@@ -78,4 +78,8 @@ public class ChatroomServerGUI {
       this.panel.remove(component);
     }));
   }
+
+  public void removeFrame() {
+    this.frame.dispose();
+  }
 }

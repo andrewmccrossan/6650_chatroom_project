@@ -6,9 +6,12 @@ import java.io.BufferedWriter;
 import java.io.IOException;
 import java.io.InputStreamReader;
 import java.io.OutputStreamWriter;
+import java.net.DatagramPacket;
+import java.net.DatagramSocket;
 import java.net.InetAddress;
 import java.net.ServerSocket;
 import java.net.Socket;
+import java.net.SocketException;
 import java.net.UnknownHostException;
 import java.rmi.RemoteException;
 import java.util.ArrayList;
@@ -40,9 +43,11 @@ public class LookUpServer {
   public String addressForOtherPaxosServersToConnectTo;
   public int portForOtherPaxosServersToConnectTo;
   public String myPaxosRole;
+  public ConcurrentHashMap<String,BufferedWriter> usernameToSocketWriters;
 
   // chatroom and heartbeat vars
   public ConcurrentHashMap<String,ChatroomInfo> hostUsernameToChatroomInfos;
+  public ConcurrentHashMap<String,Timer> hostUsernameToHearbeatTimer;
 
   // Acceptor variables
   public long maxPromisedProposalNumber = -1;
@@ -65,6 +70,8 @@ public class LookUpServer {
       this.usernamePortStore = new ConcurrentHashMap<>();
       this.chatNameChatroomInfoStore = new ConcurrentHashMap<>();
       this.hostUsernameToChatroomInfos = new ConcurrentHashMap<>();
+      this.usernameToSocketWriters = new ConcurrentHashMap<>();
+      this.hostUsernameToHearbeatTimer = new ConcurrentHashMap<>();
       new Thread(new LoginWaiter()).start();
       this.myPaxosRole = myPaxosRole;
       createServerSocketForOtherPaxosServersToConnectTo();
@@ -557,6 +564,7 @@ public class LookUpServer {
         startPaxos("login&%%" + username + "&%%" + password);
         loggedInUsersAndPasswords.put(username, password);
         this.clientUsername = username;
+        usernameToSocketWriters.put(username, this.clientWriter);
         return "success";
       } else if (usernamePasswordStore.get(username) == null || !usernamePasswordStore.get(username).equalsIgnoreCase(password)){
         return "incorrect";
@@ -574,6 +582,7 @@ public class LookUpServer {
         // start paxos so other servers are updated
         startPaxos("register&%%" + username + "&%%" + password);
         this.clientUsername = username;
+        usernameToSocketWriters.put(username, this.clientWriter);
         usernamePasswordStore.put(username, password);
         loggedInUsersAndPasswords.put(username, password);
         return "success";
@@ -585,6 +594,38 @@ public class LookUpServer {
       startPaxos("logout&%%" + username);
       loggedInUsersAndPasswords.remove(username);
       return "success";
+    }
+
+    private String handleReCreateChat(String[] chatRequest) {
+      String chatName = chatRequest[1];
+      String username = chatRequest[2];
+      this.clientUsername = username;
+      if (!chatNameChatroomInfoStore.containsKey(chatName)) {
+        System.out.println("In handleReCreateChat and chatname " + chatName + " not in chatNameChatroomInfoStore");
+        return "exists";
+      } else {
+        // start paxos so other servers are updated
+        // TODO - need to get proper ports and addresses etc to other lookupservers.
+        startPaxos("reCreateChat&%%" + chatName + "&%%" + username + "&%%" + this.clientAddress.getHostAddress());
+        ChatroomInfo updatingChatroomInfo = chatNameChatroomInfoStore.get(chatName);
+        updatingChatroomInfo.setHostUsername(username);
+        updatingChatroomInfo.setInetAddress(this.clientAddress);
+        hostUsernameToChatroomInfos.put(username, updatingChatroomInfo);
+        int reUsedID = updatingChatroomInfo.ID;
+        String reUsedGroupIP = updatingChatroomInfo.groupIP;
+        String heartbeatAddress = null;
+        int heartbeatPort = 0;
+        try {
+          ServerSocket heartbeatServerSocket = new ServerSocket(0);
+          heartbeatAddress = heartbeatServerSocket.getInetAddress().getHostAddress();
+          heartbeatPort = heartbeatServerSocket.getLocalPort();
+          new Thread(new ChatroomHeartbeat(heartbeatServerSocket)).start();
+        } catch (IOException e) {
+          e.printStackTrace();
+        }
+        System.out.println("Recreated chatroom with name " + chatName + " hosted by " + username);
+        return "success@#@" + reUsedID + "@#@" + reUsedGroupIP + "@#@" + heartbeatAddress + "@#@" + heartbeatPort;
+      }
     }
 
     private String handleCreateChat(String[] chatRequest) {
@@ -651,15 +692,55 @@ public class LookUpServer {
             heartbeatWriter.flush();
           } catch (IOException e) {
             // TODO - this is the case that the chatroom host failed.
+            hostUsernameToHearbeatTimer.remove(clientUsername);
             this.heartbeatTimer.stop();
+            loggedInUsersAndPasswords.remove(clientUsername);
             System.out.println("Host has left");
             // need to force a client to make a new chatroom server. Maybe have hashmap of client
             // usernames to readers/writers.
+            ChatroomInfo chatroomInfo = hostUsernameToChatroomInfos.get(clientUsername);
+            chatroomInfo.removeMember(clientUsername);
+            String newHost = chatroomInfo.getNewHost();
+            if (newHost == null) {
+              // this is the case that the host was the last member of the chatroom before they
+              // exited, so we do not need to reboot the chatroom.
+              hostUsernameToChatroomInfos.remove(clientUsername);
+              chatNameChatroomInfoStore.remove(chatroomInfo.name);
+            } else {
+              // TODO - First, we change the chatroomInfo attribute "awaitingReassignment" to true. Then, the
+              // LookUpServer multicasts to members with message that includes the name of the new
+              // host and the name of the chatroom they should create. The member that is named in the
+              // message will call createChat with the given chatname. When they send that message to
+              // the lookup server, the lookup server's handleCreateChat should have the code to check
+              // if the awaitingReassignment is true on the chatnameInfo that matches that chatname (if it exists).
+              // When the attribute is true, you just update the hostUsername (and InetAddress maybe?).
+              // Then I need to figure out how the server gui gets an array of all the messages to post.
+              // Also, each client member has to get a new address and port to connect to to send messages
+              // to the chatroom server.
+
+              try {
+                DatagramSocket datagramSocket = new DatagramSocket();
+                String message = "chatkey125" + "$@newHost@$@#@" + newHost;
+                byte[] buffer = message.getBytes();
+                String groupAddress = chatroomInfo.groupIP;
+                DatagramPacket packet = new DatagramPacket(buffer, buffer.length, InetAddress.getByName(groupAddress), 4446);
+                datagramSocket.send(packet);
+                datagramSocket.close();
+              } catch (SocketException se) {
+                e.printStackTrace();
+              } catch (IOException ie) {
+                e.printStackTrace();
+              }
+
+//              BufferedWriter newHostSocketWriter = usernameToSocketWriters.get(newHost);
+//              newHostSocketWriter.write("");
+            }
           }
         };
         this.heartbeatTimer = new Timer(500, listener);
         this.heartbeatTimer.setRepeats(true);
         this.heartbeatTimer.start();
+        hostUsernameToHearbeatTimer.put(clientUsername, this.heartbeatTimer);
         while (true) {
           // TODO - handle this case more cleanly so that host leaving turns this off.
         }
@@ -688,7 +769,6 @@ public class LookUpServer {
             String[] messageArray = line.split("@#@");
             if (messageArray[0].equalsIgnoreCase("messageSent")) {
               System.out.println("GOT a messageSent with info: " + line);
-              //TODO - handle case that a message was sent
               String senderUsername = messageArray[1];
               String messageSent = messageArray[2];
               ChatroomInfo chatroomInfo = hostUsernameToChatroomInfos.get(clientUsername);
@@ -696,20 +776,85 @@ public class LookUpServer {
               String transaction = "messageSent&%%" + messageArray[1] + "&%%" + messageArray[2] + "&%%" + chatroomInfo.name;
               startPaxos(transaction);
             } else if (messageArray[0].equalsIgnoreCase("chatroomLogout")) {
-              //TODO - handle case that a user (not host) left the chatroom
               String leaverUsername = messageArray[1];
               ChatroomInfo chatroomInfo = hostUsernameToChatroomInfos.get(clientUsername);
               chatroomInfo.removeMember(leaverUsername);
               loggedInUsersAndPasswords.remove(clientUsername);
               String transaction = "chatroomLogout&%%" + messageArray[1] + "&%%" + chatroomInfo.name;
               startPaxos(transaction);
+            } else if (messageArray[0].equalsIgnoreCase("hostChatroomLogout")) {
+              hostUsernameToHearbeatTimer.get(clientUsername).stop();
+              hostUsernameToHearbeatTimer.remove(clientUsername);
+              loggedInUsersAndPasswords.remove(clientUsername);
+              System.out.println("Host has left");
+              // need to force a client to make a new chatroom server.
+              ChatroomInfo chatroomInfo = hostUsernameToChatroomInfos.get(clientUsername);
+              chatroomInfo.removeMember(clientUsername);
+              this.chatroomWriter.write("removeGUI");
+              this.chatroomWriter.newLine();
+              this.chatroomWriter.flush();
+              String newHost = chatroomInfo.getNewHost();
+//              chatroomInfo.setAwaitingReassignment(true);
+              if (newHost != null) {
+                // this is the case that there is another member in the chatroom, so we need to
+                // reboot the chatroom.
+                try {
+                  DatagramSocket datagramSocket = new DatagramSocket();
+                  String message = "chatkey125" + "$@newHost@$@#@" + newHost;
+                  byte[] buffer = message.getBytes();
+                  String groupAddress = chatroomInfo.groupIP;
+                  DatagramPacket packet = new DatagramPacket(buffer, buffer.length, InetAddress.getByName(groupAddress), 4446);
+                  datagramSocket.send(packet);
+                  datagramSocket.close();
+                } catch (SocketException se) {
+                  se.printStackTrace();
+                } catch (IOException ie) {
+                  ie.printStackTrace();
+                }
+              } else {
+                // this is the case that no one is left in the chatroom.
+                hostUsernameToChatroomInfos.remove(clientUsername);
+                chatNameChatroomInfoStore.remove(chatroomInfo.name);
+              }
             } else if (messageArray[0].equalsIgnoreCase("backToChatSelection")) {
-              //TODO - handle case that a user (not host) went back to chat selection screen
               String leaverUsername = messageArray[1];
               ChatroomInfo chatroomInfo = hostUsernameToChatroomInfos.get(clientUsername);
               chatroomInfo.removeMember(leaverUsername);
               String transaction = "backToChatSelection&%%" + messageArray[1] + "&%%" + chatroomInfo.name;
               startPaxos(transaction);
+            } else if (messageArray[0].equalsIgnoreCase("hostBackToChatSelection")) {
+              hostUsernameToHearbeatTimer.get(clientUsername).stop();
+              hostUsernameToHearbeatTimer.remove(clientUsername);
+              System.out.println("Host has left");
+              // need to force a client to make a new chatroom server.
+              ChatroomInfo chatroomInfo = hostUsernameToChatroomInfos.get(clientUsername);
+              chatroomInfo.removeMember(clientUsername);
+              this.chatroomWriter.write("removeGUI");
+              this.chatroomWriter.newLine();
+              this.chatroomWriter.flush();
+              String newHost = chatroomInfo.getNewHost();
+//              chatroomInfo.setAwaitingReassignment(true);
+              if (newHost != null) {
+                // this is the case that there is another member in the chatroom, so we need to
+                // reboot the chatroom.
+                try {
+                  DatagramSocket datagramSocket = new DatagramSocket();
+                  String message = "chatkey125" + "$@newHost@$@#@" + newHost;
+                  byte[] buffer = message.getBytes();
+                  String groupAddress = chatroomInfo.groupIP;
+                  DatagramPacket packet = new DatagramPacket(buffer, buffer.length, InetAddress.getByName(groupAddress), 4446);
+                  datagramSocket.send(packet);
+                  datagramSocket.close();
+                } catch (SocketException se) {
+                  se.printStackTrace();
+                } catch (IOException ie) {
+                  ie.printStackTrace();
+                }
+              } else {
+                // this is the case that no one is left in the chatroom.
+                hostUsernameToChatroomInfos.remove(clientUsername);
+                chatNameChatroomInfoStore.remove(chatroomInfo.name);
+              }
             } else if (messageArray[0].equalsIgnoreCase("addedASCII")) {
               // TODO - maybe add this portion
             }
@@ -728,6 +873,35 @@ public class LookUpServer {
       ChatroomInfo chatroomInfo = chatNameChatroomInfoStore.get(chatroomName);
       chatroomInfo.setPort(newPort);
       return "success";
+    }
+
+    private String handleNotifyMembersOfRecreation(String[] notifyMessage) {
+      String newServerAddress = notifyMessage[1];
+      int newServerPort = Integer.parseInt(notifyMessage[2]);
+      String chatName = notifyMessage[3];
+      String newHost = notifyMessage[4];
+      try {
+        DatagramSocket datagramSocket = new DatagramSocket();
+        String message = "chatkey125" + "$@notifyRecreation@$@#@" + newHost + "@#@" + newServerAddress + "@#@" + newServerPort;
+        byte[] buffer = message.getBytes();
+        ChatroomInfo chatroomInfo = chatNameChatroomInfoStore.get(chatName);
+        String groupAddress = chatroomInfo.groupIP;
+        DatagramPacket packet = new DatagramPacket(buffer, buffer.length, InetAddress.getByName(groupAddress), 4446);
+        datagramSocket.send(packet);
+        datagramSocket.close();
+      } catch (SocketException se) {
+        se.printStackTrace();
+      } catch (IOException ie) {
+        ie.printStackTrace();
+      }
+      return "success";
+    }
+
+    private String handleGetAllChatroomMessages(String[] messageInfo) {
+      String givenChatname = messageInfo[1];
+      ChatroomInfo chatroomInfo = chatNameChatroomInfoStore.get(givenChatname);
+      String allSentMessages = chatroomInfo.getAllMessages();
+      return allSentMessages;
     }
 
     private String handleJoinChat(String[] chatRequest) {
@@ -794,7 +968,7 @@ public class LookUpServer {
             // TODO - handle the situation from LookUpServer's point of view when a client process quits
             // TODO - although, maybe the ChatroomServer should just handle this entirely by contacting the LookUpServer
             // The case of a Host client failing is handled elsewhere in the ChatroomHeartbeat.
-            if (!hostUsernameToChatroomInfos.containsKey(clientUsername)) {
+            if (clientUsername != null && !hostUsernameToChatroomInfos.containsKey(clientUsername)) {
               // If logged in, log them out.
               System.out.println("THE NON-HOST CLIENT WAS KILLED");
               loggedInUsersAndPasswords.remove(clientUsername);
@@ -817,6 +991,12 @@ public class LookUpServer {
             response = handleChatSelectionLogout(messageArray);
           } else if (messageArray[0].equalsIgnoreCase("createChat")) {
             response = handleCreateChat(messageArray);
+          } else if (messageArray[0].equalsIgnoreCase("reCreateChat")) {
+            response = handleReCreateChat(messageArray);
+          } else if (messageArray[0].equalsIgnoreCase("notifyMembersOfRecreation")) {
+            response = handleNotifyMembersOfRecreation(messageArray);
+          } else if (messageArray[0].equalsIgnoreCase("getAllChatroomMessages")) {
+            response = handleGetAllChatroomMessages(messageArray);
           } else if (messageArray[0].equalsIgnoreCase("updateChatConnectionPort")) {
             response = handleUpdateChatConnectionPort(messageArray);
           } else if (messageArray[0].equalsIgnoreCase("joinChat")) {
