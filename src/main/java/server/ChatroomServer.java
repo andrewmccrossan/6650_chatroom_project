@@ -122,7 +122,6 @@ public class ChatroomServer {
     for (String fullMessage : oldMessages) {
       String[] messageInfo = fullMessage.split("@#@");
       String sender = messageInfo[0];
-      // todo - handle case of no messages in chatroom.
       String actualMessage = messageInfo[1];
       chatroomServerGUI.displayNewMessage(sender, actualMessage);
     }

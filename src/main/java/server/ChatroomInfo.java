@@ -87,6 +87,7 @@ public class ChatroomInfo {
   public String getAllMessages() {
     StringBuilder allSentMessages = new StringBuilder();
     int numOfMessages = this.messageContents.size();
+    System.out.println("size of contents: " + numOfMessages);
     for (int i = 0; i < numOfMessages; i++) {
       String sender = this.messageSenders.get(i);
       String contents = this.messageContents.get(i);

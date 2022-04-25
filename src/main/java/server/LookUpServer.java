@@ -528,7 +528,6 @@ public class LookUpServer {
 
     private BufferedWriter heartbeatWriter;
     private BufferedReader heartbeatReader;
-//    private Transaction largestPromiseTransaction;
 
     public ClientSocketHandler(Socket socket) {
       this.clientSocket = socket;
@@ -537,7 +536,6 @@ public class LookUpServer {
     }
 
     private void startPaxos(String transactionInfo) {
-//        Transaction transaction = new Transaction(transactionInfo);
       long proposalNum = new Date().getTime();
       largestPromiseTransaction = transactionInfo;
       // Prepare acceptors by asking to reply with promise.
@@ -901,6 +899,7 @@ public class LookUpServer {
       String givenChatname = messageInfo[1];
       ChatroomInfo chatroomInfo = chatNameChatroomInfoStore.get(givenChatname);
       String allSentMessages = chatroomInfo.getAllMessages();
+      System.out.println("allSentMessages: " + allSentMessages);
       return allSentMessages;
     }
 

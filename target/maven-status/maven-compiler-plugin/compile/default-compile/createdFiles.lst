@@ -15,7 +15,6 @@ server/LookUpServer$ClientSocketHandler$ChatroomHeartbeat.class
 server/ChatroomInfo.class
 server/LookUpServer$LoginWaiter.class
 gui/ClientGUI$CreateChatButtonListener.class
-server/Transaction.class
 gui/ClientGUI$ChatroomNewMessageButtonListener.class
 server/ChatroomServer$NewUserConnector.class
 Driver.class

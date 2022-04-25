@@ -274,15 +274,14 @@ public class Client {
           this.writer.newLine();
           this.writer.flush();
           String chatroomMessages = this.reader.readLine();
-          String[] splitUpChatroomMessages = chatroomMessages.split("~##~");
-          this.hostedChatroomServer.replenishLogDisplay(splitUpChatroomMessages);
+          System.out.println("chatroomMessages: " + chatroomMessages);
+          if (chatroomMessages.length() > 0) {
+            String[] splitUpChatroomMessages = chatroomMessages.split("~##~");
+            this.hostedChatroomServer.replenishLogDisplay(splitUpChatroomMessages);
+          }
         }
-        this.chatRoomServerAddress = InetAddress.getByName("localhost"); // TODO - get address dynamically somehow (or maybe not since it will always be on localhost
+        this.chatRoomServerAddress = InetAddress.getByName("localhost");
         connectSocketToChatroomServer();
-//        MulticastMessageReceiver multicastMessageReceiver = new MulticastMessageReceiver();
-//        this.currentMulticastMessageReceiver = multicastMessageReceiver;
-//        this.multicastMessageReceiverThread = new Thread(multicastMessageReceiver);
-//        this.multicastMessageReceiverThread.start();
         return responseArray[0];
       } else { // case where response is "exists"
         return responseArray[0];
