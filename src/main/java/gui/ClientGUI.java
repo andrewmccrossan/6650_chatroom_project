@@ -4,7 +4,6 @@ import java.awt.*;
 import java.awt.event.ActionEvent;
 import java.awt.event.ActionListener;
 import java.util.ArrayList;
-import java.util.concurrent.TimeUnit;
 
 import javax.swing.*;
 
@@ -219,6 +218,11 @@ public class ClientGUI {
     }
   }
 
+  /**
+   * Listener for Logout button in Chat selection screen. Notifies LookUp server that we have logged
+   * out. User is not in a chatroom at this screen so the server does not need to account for a member
+   * leaving a chatroom. Success causes the Login/Register screen to appear.
+   */
   public class ChatSelectionLogOutButtonListener implements ActionListener {
     @Override
     public void actionPerformed(ActionEvent e) {
@@ -231,6 +235,11 @@ public class ClientGUI {
     }
   }
 
+  /**
+   * Listener for Logout button in chatroom. Notifies chatroom server that we have logged out. Chatroom
+   * server handles case based on if user logging out is the host client or just a normal client.
+   * Success causes the Login/Register screen to appear.
+   */
   public class ChatroomLogOutButtonListener implements ActionListener {
     @Override
     public void actionPerformed(ActionEvent e) {
@@ -243,6 +252,12 @@ public class ClientGUI {
     }
   }
 
+  /**
+   * Listener for Send button in chatroom. This checks if the textbox has any contents to send. Also
+   * checks if textbox has reserved string sequences. Opens toast messages in case there is no message
+   * or a message with reserved sequences. If valid, the message is sent to the chatroom server, which
+   * will multicast message to all members in chatroom.
+   */
   public class ChatroomNewMessageButtonListener implements ActionListener {
     @Override
     public void actionPerformed(ActionEvent e) {
@@ -250,6 +265,8 @@ public class ClientGUI {
       if (newMessage.length() == 0) {
         openToastLabel("Write a message to send!");
       } else if (newMessage.contains("@#@") || newMessage.contains("%&%") || newMessage.contains("~##~")) {
+        // These are special reserved sequences since all communication is through sockets and
+        // delineators between content must be kept unique.
         openToastLabel("Do not use special reserved sequences '@#@', '%&%', or '~##~'!");
       } else {
         String response = client.sendNewChatroomMessage(chatroomNewMessageField.getText());
@@ -257,6 +274,9 @@ public class ClientGUI {
     }
   }
 
+  /**
+   * Listener for button that updates what users are in the chat.
+   */
   public class GetUsersInChatroomButtonListener implements ActionListener {
     @Override
     public void actionPerformed(ActionEvent e) {
@@ -268,6 +288,10 @@ public class ClientGUI {
     }
   }
 
+  /**
+   * Listener for button that sends user back to chat selection screen. Client tells Chatroom server
+   * that this user is leaving. If successful then chat selection screen is opened.
+   */
   public class BackToChatSelectionButtonListener implements ActionListener {
     @Override
     public void actionPerformed(ActionEvent e) {
@@ -280,24 +304,40 @@ public class ClientGUI {
     }
   }
 
+  /**
+   * Remove all of the Swing components on panel so that a new screen be put up.
+   */
   public void removeAllComponents() {
     this.componentsOnPanel.forEach((component -> {
       this.panel.remove(component);
     }));
   }
 
+  /**
+   * Add component to the list of components so that they can be tracked and removed as necessary.
+   * @param component
+   */
   public void addComponentToPanel(Component component) {
     this.componentsOnPanel.add(component);
     this.panel.add(component);
   }
 
+  /**
+   * Display a message and who it was sent by in the chatroom text area.
+   * @param sender
+   * @param message
+   */
   public void displayNewMessage(String sender, String message) {
     this.chatroomTextArea.append(sender + ": " + message + "\n");
   }
 
+  /**
+   * Open the chatroom screen which includes an area that displays texts, a textbox and button to
+   * send messages, a section that displays the users currently in the chatroom, a button to update
+   * this section, a button to go back to the chat selection screen, and a logout button.
+   */
   public void openChatroomScreen() {
     this.removeAllComponents();
-//    panel.setLayout(new GridLayout(0, 1));
     panel.setLayout(new BoxLayout(panel, BoxLayout.Y_AXIS));
 
     // Add messaging components to panel
@@ -305,6 +345,9 @@ public class ClientGUI {
     this.chatroomTextArea = new JTextArea(10, 30);
     this.chatroomScrollPane = new JScrollPane(this.chatroomTextArea);
     this.chatroomTextArea.setEditable(false);
+    // smart scroller ensures that display shows most recent messages by default, and it also ensures
+    // that a new message will not force the screen to move to the bottom if the user has scrolled
+    // up and is looking at older messages.
     new SmartScroller(this.chatroomScrollPane);
     this.chatroomNewMessageField = new JTextField(30);
     this.chatroomNewMessageButton = new JButton("Send");
@@ -332,7 +375,7 @@ public class ClientGUI {
     this.backToChatSelectionButton = new JButton("Go Back To Chatroom Selection Screen");
     this.backToChatSelectionButton.addActionListener(new BackToChatSelectionButtonListener());
     this.logoutButton = new JButton("Log Out");
-    this.logoutButton.addActionListener(new ChatroomLogOutButtonListener()); // TODO - maybe have a differnt button listener for this
+    this.logoutButton.addActionListener(new ChatroomLogOutButtonListener());
     addComponentToPanel(this.backToChatSelectionButton);
     addComponentToPanel(this.logoutButton);
 
@@ -340,11 +383,16 @@ public class ClientGUI {
     frame.pack();
   }
 
+  /**
+   * Open the screen for joining or creating a chatroom. This screen has a textbox and button for
+   * joining a chatroom, a textbox and button for creating a chatroom, a display for what chatrooms
+   * are live and how many people are in them, and a button for logging out.
+   */
   public void openChatSelectionScreen() {
     this.removeAllComponents();
-
     panel.setLayout(new GridLayout(0, 2));
 
+    // All components for joining or creating a chatroom
     joinChatLabel = new JLabel("Enter Chatroom to Join:");
     createChatLabel = new JLabel("Enter Chatroom to Create:");
     joinChatField = new JTextField(10);
@@ -354,6 +402,7 @@ public class ClientGUI {
     joinChatButton.addActionListener(new JoinChatButtonListener());
     createChatButton.addActionListener(new CreateChatButtonListener());
 
+    // all components for displaying live chatrooms and how many people are in them
     allChatroomNamesLabel = new JLabel("Available Chatrooms:");
     allChatroomMembersLabel = new JLabel("Total members:");
     allChatroomNamesTextArea = new JTextArea(4, 4);
@@ -364,7 +413,6 @@ public class ClientGUI {
     allChatroomMembersScrollPane = new JScrollPane(allChatroomMembersTextArea);
     allChatroomMembersTextArea.setEditable(false);
     new SmartScroller(allChatroomMembersScrollPane);
-
     ArrayList<String[]> chatNameNumberPairs = this.client.attemptGetNumUsersInChatrooms();
     for (String[] chatNameNumberPair : chatNameNumberPairs) {
       String roomName = chatNameNumberPair[0];
@@ -392,9 +440,15 @@ public class ClientGUI {
     frame.pack();
   }
 
+  /**
+   * Open screen for logging in or registering. This screen displays a login section with a username
+   * textbox, a password textbox, and a button to log in. The screen also displays a register section
+   * with a username textbox, a password textbox, and a button to register.
+   */
   public void openLoginRegisterScreen() {
     this.removeAllComponents();
 
+    // components for logging in
     this.loginTitleLabel = new JLabel("Login");
     this.loginTitleLabel.setFont(new Font("Serif", Font.BOLD, 26));
     this.loginUsernameLabel = new JLabel("Username:");
@@ -406,6 +460,7 @@ public class ClientGUI {
 
     this.separator = new JSeparator();
 
+    // components for registering
     this.registerTitleLabel = new JLabel("Register");
     this.registerTitleLabel.setFont(new Font("Serif", Font.BOLD, 26));
     this.registerUsernameLabel = new JLabel("Username:");

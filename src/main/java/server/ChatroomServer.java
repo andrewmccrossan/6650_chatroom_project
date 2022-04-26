@@ -1,6 +1,5 @@
 package server;
 
-import java.awt.*;
 import java.io.BufferedReader;
 import java.io.BufferedWriter;
 import java.io.IOException;
@@ -16,7 +15,6 @@ import java.net.UnknownHostException;
 
 import client.Client;
 import gui.ChatroomServerGUI;
-import gui.ClientGUI;
 
 public class ChatroomServer {
 

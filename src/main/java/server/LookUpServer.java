@@ -757,7 +757,8 @@ public class LookUpServer {
 
       @Override
       public void run() {
-        while (true) {
+        boolean isAlive = true;
+        while (isAlive) {
           String line = null;
           try {
             line = this.chatroomReader.readLine();
@@ -857,6 +858,7 @@ public class LookUpServer {
               // TODO - maybe add this portion
             }
           } catch (IOException e) {
+            isAlive = false;
             e.printStackTrace();
           }
         }
