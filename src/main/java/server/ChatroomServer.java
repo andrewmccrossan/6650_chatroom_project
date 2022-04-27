@@ -16,13 +16,19 @@ import java.net.UnknownHostException;
 import client.Client;
 import gui.ChatroomServerGUI;
 
+/**
+ * Chatroom server class that handles all the logic for a chatroom, including receiving messages and
+ * notifications from clients in the chatroom and multicasting them out to all members, receiving
+ * heartbeats from a LookUp server, and sending any necessary info to the LookUp server to back-up
+ * information.
+ */
 public class ChatroomServer {
 
   public int ID;
   public String chatroomName;
   public Client hostClient;
   public ChatroomServerGUI chatroomServerGUI;
-  public ServerSocket serverSocketForClients; // for receiving messages from clients in chatroom.
+  public ServerSocket serverSocketForClients;
   public int portForClients;
   public InetAddress group;
   public DatagramSocket datagramSocketForMulticast;
@@ -34,21 +40,34 @@ public class ChatroomServer {
   public Socket heartbeatSocket;
   public BufferedReader heartbeatReader;
   public BufferedWriter heartbeatWriter;
-  public Socket socketForLookUpServer; // TODO - for receiving heartbeats from LookUpServer.
 
+  /**
+   * Constructor for chatroom server that initializes state variables, creates a chatroom server GUI,
+   * sets up a server socket for clients to connect to, and connects a socket to the LookUp server to
+   * receive heartbeats and send information.
+   * @param ID
+   * @param hostClient
+   * @param groupIP
+   * @param chatroomName
+   * @param heartbeatAddress
+   * @param heartbeatPort
+   */
   public ChatroomServer(int ID, Client hostClient, String groupIP, String chatroomName,
                         String heartbeatAddress, int heartbeatPort) {
     this.ID = ID;
     this.chatroomName = chatroomName;
     this.hostClient = hostClient;
+    // create the GUI that will display the history of all messages
     this.chatroomServerGUI = new ChatroomServerGUI(this);
     this.heartbeatAddress = heartbeatAddress;
     this.heartbeatPort = heartbeatPort;
+    // set the group IP that this chatroom server will publish messages to
     try {
       this.group = InetAddress.getByName(groupIP);
     } catch (UnknownHostException e) {
       e.printStackTrace();
     }
+    // create a server socket for clients joining chatroom to connect to
     try {
       this.serverSocketForClients = new ServerSocket(0);
       this.portForClients = this.serverSocketForClients.getLocalPort();
@@ -57,6 +76,7 @@ public class ChatroomServer {
     } catch (IOException e) {
       e.printStackTrace();
     }
+    // connect to LookUp server to receive heartbeats and send any chatroom information
     try {
       this.heartbeatSocket = new Socket(heartbeatAddress, heartbeatPort);
       System.out.println("Connected to lookup for heartbeat");
@@ -67,6 +87,10 @@ public class ChatroomServer {
     }
   }
 
+  /**
+   * Class to be executed by a thread that will accept socket connections from clients joining the
+   * chatroom. Then it will create a new thread for that client socket.
+   */
   public class NewUserConnector implements Runnable {
     @Override
     public void run() {
@@ -83,14 +107,28 @@ public class ChatroomServer {
     }
   }
 
+  /**
+   * Class to be executed by a thread that will listen for heartbeats from a LookUp server and
+   * handle the case that the message is to remove the chatroom server GUI (delete window).
+   */
   public class HeartbeatHandler implements Runnable {
 
     public Socket socket;
 
+    /**
+     * Constructor for hearbeat handler which sets the socket that is connected to a LookUp server
+     * @param socket
+     */
     public HeartbeatHandler(Socket socket) {
       this.socket = socket;
     }
 
+    /**
+     * Sets the buffered reader and buffered writer for the socket that is connected to a LookUp
+     * server. Then continuously listens to the socket and handles messages. If it is a heartbeat,
+     * then ignore it because the LookUp server is only checking that messages successfully get sent,
+     * but if the message is "removeGUI" then remove the chatroom server GUI.
+     */
     @Override
     public void run() {
       try {
@@ -105,8 +143,8 @@ public class ChatroomServer {
           String[] messageArray = line.split("@#@");
           if (messageArray[0].equalsIgnoreCase("heartbeat")) {
             // don't do anything since the LookUp server knows if this message didn't go through
-            System.out.println("RECEIVED heartbeat");
           } else if (messageArray[0].equalsIgnoreCase("removeGUI")) {
+            // remove the chatroom server GUI window
             chatroomServerGUI.removeFrame();
           }
         } catch (IOException e) {
@@ -116,6 +154,11 @@ public class ChatroomServer {
     }
   }
 
+  /**
+   * Display on the chatroom server GUI all of the given messages, including the sender username and
+   * the message content.
+   * @param oldMessages
+   */
   public void replenishLogDisplay(String[] oldMessages) {
     for (String fullMessage : oldMessages) {
       String[] messageInfo = fullMessage.split("@#@");
@@ -125,6 +168,11 @@ public class ChatroomServer {
     }
   }
 
+  /**
+   * Multicast the given message to the known groupIP so that all member clients of the chatroom
+   * receive the message.
+   * @param message
+   */
   public void multicastMessage(String message) {
     try {
       datagramSocketForMulticast = new DatagramSocket();
@@ -141,24 +189,36 @@ public class ChatroomServer {
 
   }
 
+  /**
+   * Class to be executed by a thread that handles messages from a client through a socket.
+   */
   private class ClientSocketHandler implements Runnable {
     private final Socket clientSocket;
     private final InetAddress clientAddress;
     private final int clientPort;
 
+    /**
+     * Constructor for client socket handler that sets the client socket, client address, and
+     * client port attributes.
+     * @param socket
+     */
     public ClientSocketHandler(Socket socket) {
       this.clientSocket = socket;
       this.clientAddress = this.clientSocket.getInetAddress();
       this.clientPort = this.clientSocket.getPort();
     }
 
+    /**
+     * Handle the case of a sender sending a message through the socket by multicasting the message
+     * to all members of the chatroom and sending the message to a LookUp server to back up the info.
+     * Also display the message on the chatroom server GUI.
+     * @param sender
+     * @param actualMessage
+     */
     private void handleMessage(String sender, String actualMessage) {
       // multicast to all connected clients
       String message = sender + "@#@" + actualMessage;
       multicastMessage(message);
-//      String[] fullMessage = message.split("@#@");
-//      String sender = fullMessage[0];
-//      String actualMessage = fullMessage[1];
       try {
         System.out.println("In handleMessage sending: " + sender + ": " + actualMessage);
         heartbeatWriter.write("messageSent@#@" + sender + "@#@" + actualMessage);
@@ -168,11 +228,18 @@ public class ChatroomServer {
         e.printStackTrace();
       }
       chatroomServerGUI.displayNewMessage(sender, actualMessage);
-//      return "success";
     }
 
+    /**
+     * Handle the case that user with the given username is logging out while in this chatroom. If
+     * the leaving user is the host then tell a LookUp server this so it can pick a new host and
+     * recreate a chatroom server with that host client. If the leaving user is not the host, then
+     * tell a LookUp server so that they can log the user out and remove them from the chatroom.
+     * @param leaverUsername
+     */
     private void handleChatroomLogout(String leaverUsername) {
       if (leaverUsername.equalsIgnoreCase(hostClient.username)) {
+        // case that the leaving user is the host client
         try {
           System.out.println("In handleChatroomLogout for myself the host " + leaverUsername);
           heartbeatWriter.write("hostChatroomLogout" + "@#@" + leaverUsername);
@@ -182,6 +249,7 @@ public class ChatroomServer {
           e.printStackTrace();
         }
       } else {
+        // case that the leaving user is not the host client
         try {
           System.out.println("In handleChatroomLogout sending: " + leaverUsername);
           heartbeatWriter.write("chatroomLogout@#@" + leaverUsername);
@@ -193,8 +261,17 @@ public class ChatroomServer {
       }
     }
 
+    /**
+     * Handle the case that a user with the given username is clicking the button to go back to the
+     * chat selection screen while they are in this chatroom. If the leaving user is the host then
+     * tell a LookUp server this so it can pick a new host and recreate a chatroom server with that
+     * host client. If the leaving usr is not the host then tell a LookUp server so that it can
+     * remove them from the chatroom.
+     * @param leaverUsername
+     */
     private void handleBackToChatSelection(String leaverUsername) {
       if (leaverUsername.equalsIgnoreCase(hostClient.username)) {
+        // case that the leaving user is the host client
         try {
           System.out.println("In handleBackToChatSelection sending: " + leaverUsername);
           heartbeatWriter.write("hostBackToChatSelection@#@" + leaverUsername);
@@ -204,6 +281,7 @@ public class ChatroomServer {
           e.printStackTrace();
         }
       } else {
+        // case that the leaving user is not the host client
         try {
           System.out.println("In handleBackToChatSelection sending: " + leaverUsername);
           heartbeatWriter.write("backToChatSelection@#@" + leaverUsername);
@@ -213,17 +291,13 @@ public class ChatroomServer {
           e.printStackTrace();
         }
       }
-
-//      try {
-//        System.out.println("In handleBackToChatSelection sending: " + leaverUsername);
-//        heartbeatWriter.write("backToChatSelection@#@" + leaverUsername);
-//        heartbeatWriter.newLine();
-//        heartbeatWriter.flush();
-//      } catch (IOException e) {
-//        e.printStackTrace();
-//      }
     }
 
+    /**
+     * Set up the buffered reader and buffered writer for a client that has joined chatroom and
+     * connected its socket to the chatroom server. Then listen for messages from the client and
+     * handle them as necessary with helper handler functions.
+     */
     public void run() {
       BufferedReader reader = null;
       BufferedWriter writer = null;
@@ -235,13 +309,15 @@ public class ChatroomServer {
       } catch (IOException e) {
         e.printStackTrace();
       }
+      // continuously listen to client's socket for messages
       while (true) {
         try {
           String line = reader.readLine();
+          // in case of client exiting, close socket.
           if (line == null) {
-            continue;
+            this.clientSocket.close();
+            break;
           }
-//          String beginningSubstring = line.substring(0, 7);
           String[] messageArray = line.split("@#@");
           if (messageArray[0].equalsIgnoreCase("message")) {
             handleMessage(messageArray[1], messageArray[2]);
@@ -252,9 +328,6 @@ public class ChatroomServer {
           } else {
             System.out.println("invalidRequestType in chatroomserver: " + messageArray[0]);
           }
-//          writer.write(response);
-//          writer.newLine();
-//          writer.flush();
         } catch (IOException e) {
           e.printStackTrace();
         }

@@ -13,18 +13,26 @@ import java.net.ServerSocket;
 import java.net.Socket;
 import java.net.SocketException;
 import java.net.UnknownHostException;
-import java.rmi.RemoteException;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Date;
-import java.util.Iterator;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.TimeUnit;
 
-import javax.imageio.IIOException;
 import javax.swing.*;
 
+/**
+ * LookUp server class that has several purposes: 1) Accepts socket connections from clients joining
+ * application so that information can be sent back and forth. 2) Connects by sockets to all other
+ * LookUp servers so that paxos algorithms can be carried out in order to keep all LookUp severs
+ * up-to-date with the same state in case a proposer LookUp server fails and another one must be
+ * used. Part of this set up process is contacting the Registry server which handles instructing
+ * LookUp servers to connect by socket with new LookUp servers. 3) Acts as one of the paxos roles
+ * (proposer, acceptor, or learner), but also always acts as a learner so that it receives all
+ * transactions that must occur. 4) Connects to all chatroom servers with the purpose of a) sending
+ * heartbeats to make sure chatroom is still alive and handling the case that it is not b) receiving
+ * information from chatroom server about messages sent in chatroom and who has left the chatroom.
+ */
 public class LookUpServer {
 
   public int myServerID;
@@ -59,7 +67,23 @@ public class LookUpServer {
   public long largestPromiseNum = -1;
   public String largestPromiseTransaction = null;
   public int numAcceptedAcceptors = 0;
+  public boolean reachedMajorityPromises = false;
+  public boolean reachedMajorityAcceptances = false;
 
+  /**
+   * Constructor for the LookUp server class which initializes several attributes. It then does the
+   * following: 1) Start a thread for accepting client socket connections from new clients joining the
+   * application. 2) create a server socket that accepts connections from other LookUp servers so that
+   * all LookUp servers can contact one another for the paxos algorithm as replicated servers. 3) contact
+   * registry server to tell registry server the address/port for its server socket as well as its
+   * paxos role so that the registry server can instruct other LookUp servers to connect a socket to
+   * this server socket.
+   * @param port
+   * @param serverID
+   * @param registryAddress
+   * @param registryPort
+   * @param myPaxosRole
+   */
   public LookUpServer(int port, int serverID, String registryAddress, int registryPort, String myPaxosRole) {
     try {
       this.myServerID = serverID;
@@ -81,8 +105,13 @@ public class LookUpServer {
     }
   }
 
+  /**
+   * Create a server socket for other LookUp servers to connect to so they can carry out the paxos
+   * algorithm to agree on transactions to keep replicated servers up to date.
+   */
   public void createServerSocketForOtherPaxosServersToConnectTo() {
     try {
+      // passing the argument 0 allows server socket to dynamically find an open port
       this.serverSocketForOtherPaxosServersToConnectTo = new ServerSocket(0);
       this.portForOtherPaxosServersToConnectTo = this.serverSocketForOtherPaxosServersToConnectTo.getLocalPort();
       this.addressForOtherPaxosServersToConnectTo = this.serverSocketForOtherPaxosServersToConnectTo.getInetAddress().getHostAddress();
@@ -93,6 +122,11 @@ public class LookUpServer {
     }
   }
 
+  /**
+   * Class that can be executed by a thread, which accepts socket connections from other LookUp
+   * servers and then starts a new thread to listen for new messages and then handles them as
+   * necessary. Messages received are related to carrying out the paxos algorithm.
+   */
   private class NewPaxosServerConnector implements Runnable {
     @Override
     public void run() {
@@ -104,11 +138,14 @@ public class LookUpServer {
         } catch (IOException e) {
           e.printStackTrace();
         }
-
       }
     }
   }
 
+  /**
+   * Prepare for the next paxos round by resetting paxos-related state variables. This was the
+   * approved method by professor in piazza for how to prepare a new round of paxos.
+   */
   public void prepareForNextPaxosRound() {
     this.maxPromisedProposalNumber = -1;
     this.maxAcceptedProposalNumber = -1;
@@ -117,34 +154,61 @@ public class LookUpServer {
     this.largestPromiseNum = -1;
     this.largestPromiseTransaction = null;
     this.numAcceptedAcceptors = 0;
+    this.reachedMajorityPromises = false;
+    this.reachedMajorityAcceptances = false;
   }
 
+  /**
+   * Carry out a login transaction by logging in the given user with their username and password.
+   * @param transactionInfo
+   */
   public void doLoginTransaction(String[] transactionInfo) {
     String username = cleanString(transactionInfo[1]);
     String password = cleanString(transactionInfo[2]);
     loggedInUsersAndPasswords.put(username, password);
   }
 
+  /**
+   * Carry out a logout transaction by logging out the given user based on their username.
+   * @param transactionInfo
+   */
   public void doLogoutTransaction(String[] transactionInfo) {
     String username = cleanString(transactionInfo[1]);
     loggedInUsersAndPasswords.remove(username);
   }
 
+  /**
+   * Carry out a register transaction by registering the given user with their username and password
+   * and logging them in.
+   * @param transactionInfo
+   */
   public void doRegisterTransaction(String[] transactionInfo) {
     String username = cleanString(transactionInfo[1]);
     String password = cleanString(transactionInfo[2]);
     usernamePasswordStore.put(username, password);
+    loggedInUsersAndPasswords.put(username, password);
   }
 
-  public String cleanString(String address) {
-    address = address.replace("educate", "");
-    address = address.replace("accept", "");
-    address = address.replace("propose", "");
-    address = address.replace("promise", "");
-    address = address.replace("acceptResponse", "");
-    return address;
+  /**
+   * Clean given string by removing unnecessary paxos-related keywords.
+   * @param givenString
+   * @return cleaned string
+   */
+  public String cleanString(String givenString) {
+    givenString = givenString.replace("educate", "");
+    givenString = givenString.replace("accept", "");
+    givenString = givenString.replace("propose", "");
+    givenString = givenString.replace("promise", "");
+    givenString = givenString.replace("acceptResponse", "");
+    return givenString;
   }
 
+  /**
+   * Carry out a create chat transaction by creating a new chatroomInfo objet and setting the ID,
+   * host username, chat name, groupIP, address for new members to connect to chatroom server, and
+   * adding the host user as a member. Then add the chatroomInfo object to collection of chatroomInfos.
+   * @param transactionInfo
+   */
   public void doCreateChatTransaction(String[] transactionInfo) {
     String chatName = cleanString(transactionInfo[1]);
     String username = cleanString(transactionInfo[2]);
@@ -161,9 +225,7 @@ public class LookUpServer {
     nextChatroomID++;
     newChatroomInfo.setHostUsername(username);
     newChatroomInfo.setName(chatName);
-//        newChatroomInfo.setPort(this.clientPort);
     int newGroupIPIndex = nextGroupIPLastDigit;
-//        newChatroomInfo.setGroupIP(groupIPs[newGroupIPIndex]);
     newChatroomInfo.setGroupIP(groupIPPrefix + newGroupIPIndex);
     nextGroupIPLastDigit++;
     newChatroomInfo.setInetAddress(address);
@@ -171,6 +233,12 @@ public class LookUpServer {
     chatNameChatroomInfoStore.put(chatName, newChatroomInfo);
   }
 
+  /**
+   * Carry out update chat conenction port transaction by setting the port of the chatroomInfo object
+   * associated with the given chat name. This is the port that a new member connects by socket to
+   * the chatroom server with.
+   * @param transactionInfo
+   */
   public void doUpdateChatConnectionPortTransaction(String[] transactionInfo) {
     int newPort = Integer.parseInt(cleanString(transactionInfo[1]));
     String chatroomName = cleanString(transactionInfo[2]);
@@ -180,6 +248,11 @@ public class LookUpServer {
     }
   }
 
+  /**
+   * Carry out a join chat transaction by putting a user of the given username into the ordered list of
+   * members belonging to the chatroomInfo associated with the given chat name.
+   * @param transactionInfo
+   */
   public void doJoinChatTransaction(String[] transactionInfo) {
     String chatName = cleanString(transactionInfo[1]);
     String username = cleanString(transactionInfo[2]);
@@ -187,6 +260,11 @@ public class LookUpServer {
     chatroomInfo.putMember(username);
   }
 
+  /**
+   * Carry out a message sent transaction by putting a sender username and message contents into
+   * their respective ordered lists in the chatroomInfo object associated with the given chat name.
+   * @param transactionInfo
+   */
   public void doMessageSentTransaction(String[] transactionInfo) {
     String senderUsername = cleanString(transactionInfo[1]);
     String messageSent = cleanString(transactionInfo[2]);
@@ -195,6 +273,11 @@ public class LookUpServer {
     chatroomInfo.putMessage(senderUsername, messageSent);
   }
 
+  /**
+   * Carry out a chatroom logout transaction by removing the user from the list of members in the
+   * chatroomInfo object associated with the given chat name and logging the user out.
+   * @param transactionInfo
+   */
   public void doChatroomLogoutTransaction(String[] transactionInfo) {
     String leaverUsername = cleanString(transactionInfo[1]);
     String chatName = cleanString(transactionInfo[2]);
@@ -203,6 +286,11 @@ public class LookUpServer {
     loggedInUsersAndPasswords.remove(leaverUsername);
   }
 
+  /**
+   * Carry out a back to chat selection screen transaction by removing the given user from the
+   * chatroomInfo object associated with the given chat name.
+   * @param transactionInfo
+   */
   public void doBackToChatSelectionTransaction(String[] transactionInfo) {
     String leaverUsername = cleanString(transactionInfo[1]);
     String chatName = cleanString(transactionInfo[2]);
@@ -210,16 +298,23 @@ public class LookUpServer {
     chatroomInfo.removeMember(leaverUsername);
   }
 
+  /**
+   * A class that can be executed by a thread, which receives messages from other LookUp servers for
+   * the purpose of carrying out the paxos algorithm.
+   */
   private class PaxosSocketMessageReceiver implements Runnable {
 
     public Socket socketToAnotherPaxosLookUpServer;
     public BufferedReader readerToAnotherPaxosLookUpServer;
     public BufferedWriter writerToAnotherPaxosLookUpServer;
 
-//    public PaxosSocketMessageReceiver(Socket socket) {
-//      this.socketToAnotherPaxosLookUpServer = socket;
-//    }
-
+    /**
+     * Constructor for paxos socket message receiver that sets the socket, buffered reader, and
+     * buffered writer in state.
+     * @param socket
+     * @param existingReader
+     * @param existingWriter
+     */
     public PaxosSocketMessageReceiver(Socket socket, BufferedReader existingReader, BufferedWriter existingWriter) {
       this.socketToAnotherPaxosLookUpServer = socket;
       this.readerToAnotherPaxosLookUpServer = null;
@@ -232,22 +327,37 @@ public class LookUpServer {
       }
     }
 
+    /**
+     * Handle a prepare message from another LookUp server by checking the proposal number and not
+     * promising if the maximum promised proposal number is greater than the proposal number. Also
+     * do not accept if it is a duplicate proposal number. If ok, send proposal number, max accepted
+     * proposal number, and max accepted proposal transaction along with promise.
+     * @param messageArray
+     */
     public void handlePrepare(String[] messageArray) {
       long proposalNum = Long.parseLong(messageArray[1]);
       if (maxPromisedProposalNumber >= proposalNum) {
         // deny the prepare request by not replying
-      }
-      maxPromisedProposalNumber = proposalNum;
-      String promise = "promise@#@" + proposalNum + "@#@" + maxAcceptedProposalNumber + "@#@" + maxAcceptedProposalTransaction;
-      try {
-        writerToAnotherPaxosLookUpServer.write(promise);
-        writerToAnotherPaxosLookUpServer.newLine();
-        writerToAnotherPaxosLookUpServer.flush();
-      } catch (IOException e) {
-        e.printStackTrace();
+      } else {
+        maxPromisedProposalNumber = proposalNum;
+        String promise = "promise@#@" + proposalNum + "@#@" + maxAcceptedProposalNumber + "@#@" + maxAcceptedProposalTransaction;
+        try {
+          writerToAnotherPaxosLookUpServer.write(promise);
+          writerToAnotherPaxosLookUpServer.newLine();
+          writerToAnotherPaxosLookUpServer.flush();
+        } catch (IOException e) {
+          e.printStackTrace();
+        }
       }
     }
 
+    /**
+     * Handle a promise message from an acceptor by checking if the given maximum accepted proposal
+     * number is larger than the largest promised proposal number, and updating the largest promised
+     * proposal number and largest promised transaction if so. Then, check if a majority of acceptors
+     * have promised and if so, send accept requests to all acceptors.
+     * @param messageArray
+     */
     public void handlePromise(String[] messageArray) {
       long proposalNum = Long.parseLong(messageArray[1]);
       int givenMaxAcceptedProposalNumber = Integer.parseInt(messageArray[2]);
@@ -257,7 +367,8 @@ public class LookUpServer {
         largestPromiseTransaction = givenMaxAcceptedProposalTransaction;
       }
       numPromisedAcceptors++;
-      if (acceptorLookUpServersReadersWriters.size() / 2 <= numPromisedAcceptors) {
+      if (acceptorLookUpServersReadersWriters.size() / 2 <= numPromisedAcceptors && !reachedMajorityPromises) {
+        reachedMajorityPromises = true;
         for (Map.Entry acceptor : acceptorLookUpServersReadersWriters.entrySet()) {
           BufferedWriter acceptorWriter = (BufferedWriter) acceptor.getValue();
           try {
@@ -271,6 +382,13 @@ public class LookUpServer {
       }
     }
 
+    /**
+     * Handle accept request from proposer. If the proposal number is smaller than the max promised
+     * proposal number then ignore, but otherwise, update the max accepted proposal number, the max
+     * accepted proposal transaction, and the max promised proposal number and respond to the
+     * proposer with an acceptance and proposal number and transaction.
+     * @param messageArray
+     */
     public void handleAccept(String[] messageArray) {
       long proposalNum = Long.parseLong(messageArray[1]);
       String givenTransaction = messageArray[2];
@@ -288,11 +406,19 @@ public class LookUpServer {
       }
     }
 
+    /**
+     * Handle an acceptance from an acceptor. Keep track of the number of acceptors that have
+     * accepted. If a majority has then notify all the learners (proposers and acceptors are also
+     * learners) pf what transaction to carry out.
+     * @param messageArray
+     */
     public void handleAcceptResponse(String[] messageArray) {
       long proposalNum = Long.parseLong(messageArray[1]);
       String givenTransaction = messageArray[2];
       numAcceptedAcceptors++;
-      if (acceptorLookUpServersReadersWriters.size() / 2 <= numAcceptedAcceptors) {
+      if (acceptorLookUpServersReadersWriters.size() / 2 <= numAcceptedAcceptors && !reachedMajorityAcceptances) {
+        reachedMajorityAcceptances = true;
+        // motify all acceptors of what transaction they should carry out,
         for (Map.Entry acceptor : acceptorLookUpServersReadersWriters.entrySet()) {
           BufferedWriter acceptorWriter = (BufferedWriter) acceptor.getValue();
           try {
@@ -303,6 +429,7 @@ public class LookUpServer {
             e.printStackTrace();
           }
         }
+        // notify all proposers of what transaction they should carry out.
         for (Map.Entry proposer : proposerLookUpServersReadersWriters.entrySet()) {
           BufferedWriter proposerWriter = (BufferedWriter) proposer.getValue();
           try {
@@ -313,6 +440,7 @@ public class LookUpServer {
             e.printStackTrace();
           }
         }
+        // notify all learners of what transaction they should carry out.
         for (Map.Entry learner : learnerLookUpServersReadersWriters.entrySet()) {
           BufferedWriter learnerWriter = (BufferedWriter) learner.getValue();
           try {
@@ -327,52 +455,69 @@ public class LookUpServer {
       }
     }
 
+    /**
+     * Handle an education request from proposers, for which this server will carry out the given
+     * transaction. There are multiple types of transactions that can be carried out to keep the
+     * servers in sync.
+     * @param messageArray
+     */
     public void handleEducate(String[] messageArray) {
       String transaction = messageArray[1];
       String[] transactionInfo = transaction.split("&%%");
-      String transactionType = transactionInfo[0];
-      prepareForNextPaxosRound();
-      if (transactionType.equalsIgnoreCase("login")) {
-        doLoginTransaction(transactionInfo);
-      } else if (transactionType.equalsIgnoreCase("register")) {
-        doRegisterTransaction(transactionInfo);
-      } else if (transactionType.equalsIgnoreCase("logout")) {
-        doLogoutTransaction(transactionInfo);
-      } else if (transactionType.equalsIgnoreCase("createChat")) {
-        doCreateChatTransaction(transactionInfo);
-      } else if (transactionType.equalsIgnoreCase("updateChatConnectionPort")) {
-        doUpdateChatConnectionPortTransaction(transactionInfo);
-      } else if (transactionType.equalsIgnoreCase("joinChat")) {
-        doJoinChatTransaction(transactionInfo);
-      } else if (transactionType.equalsIgnoreCase("messageSent")) {
-        doMessageSentTransaction(transactionInfo);
-      } else if (transactionType.equalsIgnoreCase("chatroomLogout")) {
-        doChatroomLogoutTransaction(transactionInfo);
-      } else if (transactionType.equalsIgnoreCase("backToChatSelection")) {
-        doBackToChatSelectionTransaction(transactionInfo);
+      if (transactionInfo != null && transactionInfo.length > 1) {
+        String transactionType = transactionInfo[0];
+        prepareForNextPaxosRound();
+        // given the type of transaction, have the appropriate handler take care of it.
+        if (transactionType.equalsIgnoreCase("login")) {
+          doLoginTransaction(transactionInfo);
+        } else if (transactionType.equalsIgnoreCase("register")) {
+          doRegisterTransaction(transactionInfo);
+        } else if (transactionType.equalsIgnoreCase("logout")) {
+          doLogoutTransaction(transactionInfo);
+        } else if (transactionType.equalsIgnoreCase("createChat")) {
+          doCreateChatTransaction(transactionInfo);
+        } else if (transactionType.equalsIgnoreCase("updateChatConnectionPort")) {
+          doUpdateChatConnectionPortTransaction(transactionInfo);
+        } else if (transactionType.equalsIgnoreCase("joinChat")) {
+          doJoinChatTransaction(transactionInfo);
+        } else if (transactionType.equalsIgnoreCase("messageSent")) {
+          doMessageSentTransaction(transactionInfo);
+        } else if (transactionType.equalsIgnoreCase("chatroomLogout")) {
+          doChatroomLogoutTransaction(transactionInfo);
+        } else if (transactionType.equalsIgnoreCase("backToChatSelection")) {
+          doBackToChatSelectionTransaction(transactionInfo);
+        }
       }
     }
 
+    /**
+     * Set up the buffered reader and buffered writer to another LookUp server for the purposes of
+     * communicating to carry out the paxos algorithm. Continuously listen to the reader and handle
+     * each type of message (usually paxos requests, but can also be notifying this LookUp server of
+     * the other LookUp server's paxos role.
+     */
     @Override
     public void run() {
       try {
+        // set up the buffered reader and writer to another LookUp server.
         if (this.readerToAnotherPaxosLookUpServer == null && this.writerToAnotherPaxosLookUpServer == null) {
           this.readerToAnotherPaxosLookUpServer = new BufferedReader(
                   new InputStreamReader(this.socketToAnotherPaxosLookUpServer.getInputStream()));
           this.writerToAnotherPaxosLookUpServer = new BufferedWriter(
                   new OutputStreamWriter(this.socketToAnotherPaxosLookUpServer.getOutputStream()));
         }
+        // continuously read in messages from another LookUp server.
         while (true) {
           String line = this.readerToAnotherPaxosLookUpServer.readLine();
           if (line == null) {
-            // TODO - handle case that connection broke since other LookUpServer failed.
             System.out.println("A CONNECTION DROPPED BETWEEN LOOKUP SERVERS");
             break;
           }
-          if (line.length() == 0) {
+          String[] messageArray = line.split("@#@");
+          if (line.length() == 0 || messageArray[1] == null) {
             continue;
           }
-          String[] messageArray = line.split("@#@");
+          // if the other LookUp server tells this server their role, then keep track of it appropriately.
           if (messageArray[0].equalsIgnoreCase("tellMyRole")) {
             String otherServerPaxosRole = messageArray[1];
             if (otherServerPaxosRole.equalsIgnoreCase("acceptor")) {
@@ -383,17 +528,13 @@ public class LookUpServer {
               learnerLookUpServersReadersWriters.put(readerToAnotherPaxosLookUpServer, writerToAnotherPaxosLookUpServer);
             }
           } else if (messageArray[0].equalsIgnoreCase("prepare")) {
-//            System.out.println("A prepare message was received");
             this.handlePrepare(messageArray);
           } else if (messageArray[0].equalsIgnoreCase("promise")) {
-//            System.out.println("A promise message was received");
             this.handlePromise(messageArray);
           } else if (messageArray[0].equalsIgnoreCase("accept")) {
             handleAccept(messageArray);
-//            System.out.println("An accept message was received");
           } else if (messageArray[0].equalsIgnoreCase("acceptResponse")) {
             handleAcceptResponse(messageArray);
-//            System.out.println("An acceptResponse message was received");
           } else if (messageArray[0].equalsIgnoreCase("educate")) {
             handleEducate(messageArray);
           } else {
@@ -406,6 +547,11 @@ public class LookUpServer {
     }
   }
 
+  /**
+   * Connect to the registry server and open a thread to handle communicating with it.
+   * @param registryAddress
+   * @param registryPort
+   */
   public void registerWithRegisterServer(String registryAddress, int registryPort) {
     try {
       Socket socket = new Socket(registryAddress, registryPort);
@@ -416,15 +562,37 @@ public class LookUpServer {
     }
   }
 
+  /**
+   * A class that can be executed by a thread, which connects a socket to the registry server, sends
+   * the registry server its address/port for its serverSocket that other LookUp servers can connect
+   * to as well as send the registry server its paxos role so that it can be stored and used to inform
+   * other LookUp servers of its role. Then, this executable class will listen for messages from
+   * the registry server about new LookUp servers that this LookUp server can connect to. Then, we
+   * connect a socket to that new LookUp server and start a new thread to handle communicating with
+   * it.
+   */
   private class RegistryServerListener implements Runnable {
     private Socket registrySocket;
     private BufferedReader registryReader;
     private BufferedWriter registryWriter;
 
+    /**
+     * Constructor for the registry server listener that sets the socket connected to teh registry
+     * in state.
+     * @param socket
+     */
     public RegistryServerListener(Socket socket) {
       this.registrySocket = socket;
     }
 
+    /**
+     * Connect a socket to the registry server. Send the registry server its address/port for its
+     * serverSocket that other LookUp servers can connect to as well as send the registry server its
+     * paxos role so that it can be stored and used to inform other LookUp servers of its role.
+     * Then, listen for messages from the registry server about new LookUp servers that this LookUp
+     * server can connect to. Then, connect a socket to that new LookUp server and start a new
+     * thread to handle communicating with it.
+     */
     @Override
     public void run() {
       try {
@@ -432,12 +600,15 @@ public class LookUpServer {
                 new InputStreamReader(this.registrySocket.getInputStream()));
         this.registryWriter = new BufferedWriter(
                 new OutputStreamWriter(this.registrySocket.getOutputStream()));
+        // send address/port to registry server that other LookUp servers can connect to this one on.
+        // Also send the paxos role of this LookUp server.
         this.registryWriter.write(addressForOtherPaxosServersToConnectTo + "@#@" + portForOtherPaxosServersToConnectTo + "@#@" + myPaxosRole);
         this.registryWriter.newLine();
         this.registryWriter.flush();
       } catch (IOException e) {
         e.printStackTrace();
       }
+      // continuously listen for messages from the registry server to connect a socket to a new LookUp server.
       while (true) {
         try {
           String line = this.registryReader.readLine();
@@ -448,6 +619,7 @@ public class LookUpServer {
             int newServerPort = Integer.parseInt(messageArray[2]);
             String paxosRole = messageArray[3];
             Socket newServerSocket = new Socket(newServerAddress, newServerPort);
+            // Start a new thread to handle communication with new LookUp server.
             InstigateSocketConnectionToOtherPaxosServer instigateSocketConnectionToOtherPaxosServer
                     = new InstigateSocketConnectionToOtherPaxosServer(newServerSocket, paxosRole);
             new Thread(instigateSocketConnectionToOtherPaxosServer).start();
@@ -459,6 +631,9 @@ public class LookUpServer {
     }
   }
 
+  /**
+   * 
+   */
   private class InstigateSocketConnectionToOtherPaxosServer implements Runnable {
 
     private Socket otherPaxosServerSocket;
@@ -729,9 +904,6 @@ public class LookUpServer {
               } catch (IOException ie) {
                 e.printStackTrace();
               }
-
-//              BufferedWriter newHostSocketWriter = usernameToSocketWriters.get(newHost);
-//              newHostSocketWriter.write("");
             }
           }
         };
@@ -767,7 +939,6 @@ public class LookUpServer {
             }
             String[] messageArray = line.split("@#@");
             if (messageArray[0].equalsIgnoreCase("messageSent")) {
-              System.out.println("GOT a messageSent with info: " + line);
               String senderUsername = messageArray[1];
               String messageSent = messageArray[2];
               ChatroomInfo chatroomInfo = hostUsernameToChatroomInfos.get(clientUsername);
@@ -778,7 +949,7 @@ public class LookUpServer {
               String leaverUsername = messageArray[1];
               ChatroomInfo chatroomInfo = hostUsernameToChatroomInfos.get(clientUsername);
               chatroomInfo.removeMember(leaverUsername);
-              loggedInUsersAndPasswords.remove(clientUsername);
+              loggedInUsersAndPasswords.remove(leaverUsername);
               String transaction = "chatroomLogout&%%" + messageArray[1] + "&%%" + chatroomInfo.name;
               startPaxos(transaction);
             } else if (messageArray[0].equalsIgnoreCase("hostChatroomLogout")) {
@@ -948,6 +1119,24 @@ public class LookUpServer {
       return response.toString();
     }
 
+    private void logOutUser() {
+      if (clientUsername != null && !hostUsernameToChatroomInfos.containsKey(clientUsername)) {
+        // If logged in, log them out.
+        System.out.println("THE NON-HOST CLIENT WAS KILLED");
+        loggedInUsersAndPasswords.remove(clientUsername);
+        // If part of a room, remove them from the room.
+        for (Map.Entry chatNameChatroomInfo : chatNameChatroomInfoStore.entrySet()) {
+          ChatroomInfo chatroomInfo = (ChatroomInfo) chatNameChatroomInfo.getValue();
+          chatroomInfo.removeMember(clientUsername);
+        }
+      }
+      try {
+        this.clientSocket.close();
+      } catch (IOException e) {
+        System.out.println("Previous socket closing successful.");
+      }
+    }
+
     public void run() {
       BufferedReader reader = null;
       BufferedWriter writer = null;
@@ -966,20 +1155,8 @@ public class LookUpServer {
           String line = reader.readLine();
           if (line == null) {
             // This is the case that the client disconnected completely.
-            // TODO - handle the situation from LookUpServer's point of view when a client process quits
-            // TODO - although, maybe the ChatroomServer should just handle this entirely by contacting the LookUpServer
             // The case of a Host client failing is handled elsewhere in the ChatroomHeartbeat.
-            if (clientUsername != null && !hostUsernameToChatroomInfos.containsKey(clientUsername)) {
-              // If logged in, log them out.
-              System.out.println("THE NON-HOST CLIENT WAS KILLED");
-              loggedInUsersAndPasswords.remove(clientUsername);
-              // If part of a room, remove them from the room.
-              for (Map.Entry chatNameChatroomInfo : chatNameChatroomInfoStore.entrySet()) {
-                ChatroomInfo chatroomInfo = (ChatroomInfo) chatNameChatroomInfo.getValue();
-                chatroomInfo.removeMember(clientUsername);
-              }
-            }
-            this.clientSocket.close();
+            logOutUser();
             break;
           }
           String[] messageArray = line.split("@#@");
@@ -1014,6 +1191,8 @@ public class LookUpServer {
           writer.flush();
         } catch (IOException e) {
           e.printStackTrace();
+          logOutUser();
+          break;
         }
       }
     }
