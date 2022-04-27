@@ -360,7 +360,7 @@ public class LookUpServer {
      */
     public void handlePromise(String[] messageArray) {
       long proposalNum = Long.parseLong(messageArray[1]);
-      int givenMaxAcceptedProposalNumber = Integer.parseInt(messageArray[2]);
+      long givenMaxAcceptedProposalNumber = Integer.parseInt(messageArray[2]);
       String givenMaxAcceptedProposalTransaction = messageArray[3];
       if (givenMaxAcceptedProposalNumber > largestPromiseNum) {
         largestPromiseNum = givenMaxAcceptedProposalNumber;
@@ -632,7 +632,10 @@ public class LookUpServer {
   }
 
   /**
-   * 
+   * Class that can be executed by a thread, which sets up the buffered reader and writer for the
+   * socket connected to a new LookUp server. Based on the LookUp server's role in paxos, adds it to
+   * the correct concurrent hash map of writers for that role. Then tells the new LookUp server your
+   * own paxos role and starts a new thread for listening for messages from the LookUp server.
    */
   private class InstigateSocketConnectionToOtherPaxosServer implements Runnable {
 
@@ -641,6 +644,13 @@ public class LookUpServer {
     private BufferedReader readerForOtherPaxosServerSocket;
     private BufferedWriter writerForOtherPaxosServerSocket;
 
+    /**
+     * Constructor for the socket connection instigator to another paxos LookUp server. Sets up the
+     * buffered reader and writer for the socket connected to a new LookUp server. Based on the LookUp
+     * server's role in paxos, adds it to the correct concurrent hash map of writers for that role.
+     * @param newServerSocket
+     * @param paxosRole
+     */
     public InstigateSocketConnectionToOtherPaxosServer(Socket newServerSocket, String paxosRole) {
       this.otherPaxosServerSocket = newServerSocket;
       this.paxosRole = paxosRole;
@@ -661,6 +671,10 @@ public class LookUpServer {
       }
     }
 
+    /**
+     * Tell the new LookUp server what your paxos role is, then start a new thread to listen for and
+     * handle messages from this server.
+     */
     @Override
     public void run() {
       try {
@@ -677,6 +691,10 @@ public class LookUpServer {
     }
   }
 
+  /**
+   * Class that can be executed by a thread, which waits to receive socket connections from a client,
+   * and then starts a thread for listening for and handling messages from the client socket.
+   */
   private class LoginWaiter implements Runnable {
     @Override
     public void run() {
@@ -693,6 +711,9 @@ public class LookUpServer {
     }
   }
 
+  /**
+   * Class that can be executed by a thread, which listens for and handles messages from a client.
+   */
   private class ClientSocketHandler implements Runnable {
     private String clientUsername;
     private Socket clientSocket;
@@ -704,13 +725,27 @@ public class LookUpServer {
     private BufferedWriter heartbeatWriter;
     private BufferedReader heartbeatReader;
 
+    /**
+     * Constructor for the client socket handler, which sets the socket and the address/port for
+     * that client.
+     * @param socket
+     */
     public ClientSocketHandler(Socket socket) {
       this.clientSocket = socket;
       this.clientAddress = this.clientSocket.getInetAddress();
       this.clientPort = this.clientSocket.getPort();
     }
 
+    /**
+     * Start a round of the paxos algorithm so that LookUp servers can get consensus on the
+     * transaction they will all carry out to stay up-to-date as replicas. The start of the algorithm
+     * is to set the proposal number (these are always monotonically increasing) and transaction
+     * and send out prepare requests to all of the acceptor LookUp servers. The acceptors' responses
+     * are received elsewhere (where all socket messages are received and handled in helper functions).
+     * @param transactionInfo
+     */
     private void startPaxos(String transactionInfo) {
+      // get a proposal number based on the current time.
       long proposalNum = new Date().getTime();
       largestPromiseTransaction = transactionInfo;
       // Prepare acceptors by asking to reply with promise.
@@ -722,12 +757,18 @@ public class LookUpServer {
           acceptorWriter.flush();
         } catch (IOException ie) {
           ie.printStackTrace();
-          // replace purposely failed acceptors
-//              acceptorIDsToReplace.add(acceptorID);
         }
       }
     }
 
+    /**
+     * Handle the case of a login request from a client by checking if the username has an associated
+     * account, if the password is correct for that username, and if that user is already logged in.
+     * If acceptable, carry out paxos round and log the user in.
+     * @param accountInfo
+     * @return a string message corresponding to if login was successful, username/password was
+     *          incorrect, or user was already logged in.
+     */
     private String handleLogin(String[] accountInfo) {
       String username = accountInfo[1];
       String password = accountInfo[2];
@@ -746,6 +787,13 @@ public class LookUpServer {
       }
     }
 
+    /**
+     * Handle register request from client by checking if a user with that username already exists.
+     * If not, carry out paxos round and then add user and log them in.
+     * @param accountInfo
+     * @return a string corresponding to a successful register or if a user with that username
+     *          already exists.
+     */
     private String handleRegister(String[] accountInfo) {
       String username = accountInfo[1];
       String password = accountInfo[2];
@@ -762,6 +810,12 @@ public class LookUpServer {
       }
     }
 
+    /**
+     * Handle a chat selection logout from a client that occurs when the client clicks logout while
+     * they are on the chat selection screen. Start a paxos round and then log them out.
+     * @param accountInfo
+     * @return success when user is logged out.
+     */
     private String handleChatSelectionLogout(String[] accountInfo) {
       String username = accountInfo[1];
       startPaxos("logout&%%" + username);
@@ -769,17 +823,26 @@ public class LookUpServer {
       return "success";
     }
 
+    /**
+     * Handle a recreate chat request from a new host client when a chatroom is being recreated after
+     * the original host leaves. This involves carrying out paxos round, setting the host information
+     * for the chatroomInfo, and setting up a socket for the chatroom server to connect to to receive
+     * heartbeats and send information to the LookUp server.
+     * @param chatRequest
+     * @return a string corresponding to if chat name is non-existent or if chat was successfully
+     *          recreated.
+     */
     private String handleReCreateChat(String[] chatRequest) {
       String chatName = chatRequest[1];
       String username = chatRequest[2];
       this.clientUsername = username;
       if (!chatNameChatroomInfoStore.containsKey(chatName)) {
-        System.out.println("In handleReCreateChat and chatname " + chatName + " not in chatNameChatroomInfoStore");
-        return "exists";
+        return "non-existent";
       } else {
         // start paxos so other servers are updated
         // TODO - need to get proper ports and addresses etc to other lookupservers.
         startPaxos("reCreateChat&%%" + chatName + "&%%" + username + "&%%" + this.clientAddress.getHostAddress());
+        // set appropriate host-related data in chatroomInfo
         ChatroomInfo updatingChatroomInfo = chatNameChatroomInfoStore.get(chatName);
         updatingChatroomInfo.setHostUsername(username);
         updatingChatroomInfo.setInetAddress(this.clientAddress);
@@ -788,6 +851,8 @@ public class LookUpServer {
         String reUsedGroupIP = updatingChatroomInfo.groupIP;
         String heartbeatAddress = null;
         int heartbeatPort = 0;
+        // start a thread to connect and listen to a chatroom server socket for getting chatroom info
+        // and sending heartbeats.
         try {
           ServerSocket heartbeatServerSocket = new ServerSocket(0);
           heartbeatAddress = heartbeatServerSocket.getInetAddress().getHostAddress();
@@ -801,15 +866,26 @@ public class LookUpServer {
       }
     }
 
+    /**
+     * Handle a create chat request from a client that is trying to create a chat with a certain
+     * name. If the chatname already exists then notify client that it exists. Else, start a paxos
+     * round, and create a new chatroomInfo with ID, host name, chat name, group IP for multicast,
+     * host socket address and port. Set up a socket for the chatroom server to connect to so that
+     * info about the chatroom can be received and heartbeats can be sent.
+     * @param chatRequest
+     * @return a string corresponding to if chatroom already exists or if chat was created successfully.
+     */
     private String handleCreateChat(String[] chatRequest) {
       String chatName = chatRequest[1];
       String username = chatRequest[2];
       this.clientUsername = username;
+      // if chatroom by that name already exists, then notify client
       if (chatNameChatroomInfoStore.containsKey(chatName)) {
         return "exists";
       } else {
         // start paxos so other servers are updated
         startPaxos("createChat&%%" + chatName + "&%%" + username + "&%%" + this.clientAddress.getHostAddress());
+        // create new chatroomInfo and set up all applicable details
         ChatroomInfo newChatroomInfo = new ChatroomInfo();
         int newID = nextChatroomID;
         newChatroomInfo.setID(newID);
@@ -825,11 +901,12 @@ public class LookUpServer {
         hostUsernameToChatroomInfos.put(username, newChatroomInfo);
         String heartbeatAddress = null;
         int heartbeatPort = 0;
+        // start a thread to connect and listen to a chatroom server socket for getting chatroom info
+        // and sending heartbeats.
         try {
           ServerSocket heartbeatServerSocket = new ServerSocket(0);
           heartbeatAddress = heartbeatServerSocket.getInetAddress().getHostAddress();
           heartbeatPort = heartbeatServerSocket.getLocalPort();
-
           new Thread(new ChatroomHeartbeat(heartbeatServerSocket)).start();
         } catch (IOException e) {
           e.printStackTrace();
@@ -839,15 +916,34 @@ public class LookUpServer {
       }
     }
 
+    /**
+     * Class that can be executed by a thread, which accepts socket connections from chatroom servers
+     * and then starts a new thread to listen for messages from the chatroom server up its status. It
+     * also writes consistent heartbeats to the chatroom server to check that it is still alive, and
+     * handles the case that the chatroom server died by checking if there are still members in the
+     * room and having a chatroom server recreated in that case.
+     */
     private class ChatroomHeartbeat implements Runnable {
 
       public ServerSocket heartbeatServerSocket;
       public Timer heartbeatTimer;
 
+      /**
+       * Constructor for chatroom heartbeat that sets the server socket that chatroom servers can
+       * connect to.
+       * @param heartbeatSocket
+       */
       public ChatroomHeartbeat(ServerSocket heartbeatSocket) {
         this.heartbeatServerSocket = heartbeatSocket;
       }
 
+      /**
+       * Accept a socket connection from a chatroom server and start a thread for listening to
+       * messages from that socket which will contain information about the state of the chatroom.
+       * Also send regular heartbeats to the chatroom server to make sure that it is still alive, and
+       * handle the case that is fails by choosing a new host if anyone is left and having them
+       * recreate a chatroom server.
+       */
       @Override
       public void run() {
         try {
@@ -858,14 +954,17 @@ public class LookUpServer {
         } catch (IOException e) {
           e.printStackTrace();
         }
+        // create an action listener that sends heartbeats to the chatroom server to check if it is
+        // alive. This listener is called by a repeating timer.
         ActionListener listener = event -> {
           try {
             heartbeatWriter.write("heartbeat");
             heartbeatWriter.newLine();
             heartbeatWriter.flush();
           } catch (IOException e) {
-            // TODO - this is the case that the chatroom host failed.
+            // this is the case that the chatroom host failed.
             hostUsernameToHearbeatTimer.remove(clientUsername);
+            // stop heartbeat timer
             this.heartbeatTimer.stop();
             loggedInUsersAndPasswords.remove(clientUsername);
             System.out.println("Host has left");
@@ -880,17 +979,9 @@ public class LookUpServer {
               hostUsernameToChatroomInfos.remove(clientUsername);
               chatNameChatroomInfoStore.remove(chatroomInfo.name);
             } else {
-              // TODO - First, we change the chatroomInfo attribute "awaitingReassignment" to true. Then, the
               // LookUpServer multicasts to members with message that includes the name of the new
               // host and the name of the chatroom they should create. The member that is named in the
-              // message will call createChat with the given chatname. When they send that message to
-              // the lookup server, the lookup server's handleCreateChat should have the code to check
-              // if the awaitingReassignment is true on the chatnameInfo that matches that chatname (if it exists).
-              // When the attribute is true, you just update the hostUsername (and InetAddress maybe?).
-              // Then I need to figure out how the server gui gets an array of all the messages to post.
-              // Also, each client member has to get a new address and port to connect to to send messages
-              // to the chatroom server.
-
+              // message will recreate chatroom with the given chatname.
               try {
                 DatagramSocket datagramSocket = new DatagramSocket();
                 String message = "chatkey125" + "$@newHost@$@#@" + newHost;
@@ -900,33 +991,176 @@ public class LookUpServer {
                 datagramSocket.send(packet);
                 datagramSocket.close();
               } catch (SocketException se) {
-                e.printStackTrace();
+                se.printStackTrace();
               } catch (IOException ie) {
-                e.printStackTrace();
+                ie.printStackTrace();
               }
             }
           }
         };
+        // start timer that will send a regular heartbeat.
         this.heartbeatTimer = new Timer(500, listener);
         this.heartbeatTimer.setRepeats(true);
         this.heartbeatTimer.start();
         hostUsernameToHearbeatTimer.put(clientUsername, this.heartbeatTimer);
-        while (true) {
-          // TODO - handle this case more cleanly so that host leaving turns this off.
-        }
+        // keep heartbeat timer alive
+        while (true) {}
       }
     }
 
+    /**
+     * Class that can be executed by a thread, which listens for messages from a chatroom server,
+     * which will be about the state of the chatroom, and handles these messages.
+     */
     private class ChatroomListener implements Runnable {
 
       private BufferedWriter chatroomWriter;
       private BufferedReader chatroomReader;
 
+      /**
+       * Set the buffered writer and reader for the chatroom server socket.
+       * @param writer
+       * @param reader
+       */
       public ChatroomListener(BufferedWriter writer, BufferedReader reader) {
         this.chatroomWriter = writer;
         this.chatroomReader = reader;
       }
 
+      /**
+       * Add the new message sent in chatroom to the history of messages sent in chatroomInfo and
+       * start paxos round prior to update all servers.
+       * @param messageArray
+       */
+      public void handleChatroomServerMessageSent(String[] messageArray) {
+        String senderUsername = messageArray[1];
+        String messageSent = messageArray[2];
+        ChatroomInfo chatroomInfo = hostUsernameToChatroomInfos.get(clientUsername);
+        String transaction = "messageSent&%%" + messageArray[1] + "&%%" + messageArray[2] + "&%%" + chatroomInfo.name;
+        startPaxos(transaction);
+        chatroomInfo.putMessage(senderUsername, messageSent);
+      }
+
+      /**
+       * Logout user and remove client member from list of members in chatroomInfo and start paxos
+       * round prior to update all servers.
+       * @param messageArray
+       */
+      public void handleChatroomServerChatroomLogout(String[] messageArray) {
+        String leaverUsername = messageArray[1];
+        ChatroomInfo chatroomInfo = hostUsernameToChatroomInfos.get(clientUsername);
+        String transaction = "chatroomLogout&%%" + messageArray[1] + "&%%" + chatroomInfo.name;
+        startPaxos(transaction);
+        chatroomInfo.removeMember(leaverUsername);
+        loggedInUsersAndPasswords.remove(leaverUsername);
+      }
+
+      /**
+       * When host has left chatroom by clicking logut, stop the heartbeat timer for the chatroom
+       * server because that runs on same process as client, log out user, and force a new host to
+       * create a new chatroom server if there are members left in chatroom. If no members left in
+       * chatroom then simply remove chatroom from existence. Start paxos round prior to update
+       * all servers.
+       * @param messageArray
+       * @throws IOException
+       */
+      public void handleChatroomServerHostChatroomLogout(String[] messageArray) throws IOException {
+        // stop the heartbeat timer since chatroom server is leaving and log user out.
+        hostUsernameToHearbeatTimer.get(clientUsername).stop();
+        hostUsernameToHearbeatTimer.remove(clientUsername);
+        loggedInUsersAndPasswords.remove(clientUsername);
+        System.out.println("Host has left");
+        ChatroomInfo chatroomInfo = hostUsernameToChatroomInfos.get(clientUsername);
+        // remove the host user from list of members in chatroomInfo and tell chatroom server to
+        // remove its GUI
+        chatroomInfo.removeMember(clientUsername);
+        this.chatroomWriter.write("removeGUI");
+        this.chatroomWriter.newLine();
+        this.chatroomWriter.flush();
+        String newHost = chatroomInfo.getNewHost();
+        if (newHost != null) {
+          // this is the case that there is another member in the chatroom, so we need to
+          // reboot the chatroom.
+          try {
+            DatagramSocket datagramSocket = new DatagramSocket();
+            String message = "chatkey125" + "$@newHost@$@#@" + newHost;
+            byte[] buffer = message.getBytes();
+            String groupAddress = chatroomInfo.groupIP;
+            DatagramPacket packet = new DatagramPacket(buffer, buffer.length, InetAddress.getByName(groupAddress), 4446);
+            datagramSocket.send(packet);
+            datagramSocket.close();
+          } catch (SocketException se) {
+            se.printStackTrace();
+          } catch (IOException ie) {
+            ie.printStackTrace();
+          }
+        } else {
+          // this is the case that no one is left in the chatroom.
+          hostUsernameToChatroomInfos.remove(clientUsername);
+          chatNameChatroomInfoStore.remove(chatroomInfo.name);
+        }
+      }
+
+      /**
+       * Remove client member from list of members in chatroomInfo and start paxos round prior to
+       * update all servers.
+       * @param messageArray
+       */
+      public void handleChatroomServerBackToChatSelection(String[] messageArray) {
+        String leaverUsername = messageArray[1];
+        ChatroomInfo chatroomInfo = hostUsernameToChatroomInfos.get(clientUsername);
+        String transaction = "backToChatSelection&%%" + messageArray[1] + "&%%" + chatroomInfo.name;
+        startPaxos(transaction);
+        chatroomInfo.removeMember(leaverUsername);
+      }
+
+      /**
+       * When host has left chatroom by clicking back to chat selection, stop the heartbeat timer
+       * for the chatroom server because that runs on same process as client and force a new host to
+       * create a new chatroom server if there are members left in chatroom. If no members left in
+       * chatroom then simply remove chatroom from existence. Start paxos round prior to update all
+       * servers.
+       * @param messageArray
+       * @throws IOException
+       */
+      public void handleChatroomServerHostBackToChatSelection(String[] messageArray) throws IOException {
+        // stop the heartbeat timer since chatroom server is leaving.
+        hostUsernameToHearbeatTimer.get(clientUsername).stop();
+        hostUsernameToHearbeatTimer.remove(clientUsername);
+        System.out.println("Host has left");
+        // remove the host user from list of members in chatroomInfo and tell chatroom server to
+        // remove its GUI
+        ChatroomInfo chatroomInfo = hostUsernameToChatroomInfos.get(clientUsername);
+        chatroomInfo.removeMember(clientUsername);
+        this.chatroomWriter.write("removeGUI");
+        this.chatroomWriter.newLine();
+        this.chatroomWriter.flush();
+        String newHost = chatroomInfo.getNewHost();
+        if (newHost != null) {
+          // this is the case that there is another member in the chatroom, so reboot the chatroom.
+          try {
+            DatagramSocket datagramSocket = new DatagramSocket();
+            String message = "chatkey125" + "$@newHost@$@#@" + newHost;
+            byte[] buffer = message.getBytes();
+            String groupAddress = chatroomInfo.groupIP;
+            DatagramPacket packet = new DatagramPacket(buffer, buffer.length, InetAddress.getByName(groupAddress), 4446);
+            datagramSocket.send(packet);
+            datagramSocket.close();
+          } catch (SocketException se) {
+            se.printStackTrace();
+          } catch (IOException ie) {
+            ie.printStackTrace();
+          }
+        } else {
+          // this is the case that no one is left in the chatroom.
+          hostUsernameToChatroomInfos.remove(clientUsername);
+          chatNameChatroomInfoStore.remove(chatroomInfo.name);
+        }
+      }
+
+      /**
+       * Listen for messages coming from chatroom server socket and handle as necessary.
+       */
       @Override
       public void run() {
         boolean isAlive = true;
@@ -939,103 +1173,29 @@ public class LookUpServer {
             }
             String[] messageArray = line.split("@#@");
             if (messageArray[0].equalsIgnoreCase("messageSent")) {
-              String senderUsername = messageArray[1];
-              String messageSent = messageArray[2];
-              ChatroomInfo chatroomInfo = hostUsernameToChatroomInfos.get(clientUsername);
-              chatroomInfo.putMessage(senderUsername, messageSent);
-              String transaction = "messageSent&%%" + messageArray[1] + "&%%" + messageArray[2] + "&%%" + chatroomInfo.name;
-              startPaxos(transaction);
+              handleChatroomServerMessageSent(messageArray);
             } else if (messageArray[0].equalsIgnoreCase("chatroomLogout")) {
-              String leaverUsername = messageArray[1];
-              ChatroomInfo chatroomInfo = hostUsernameToChatroomInfos.get(clientUsername);
-              chatroomInfo.removeMember(leaverUsername);
-              loggedInUsersAndPasswords.remove(leaverUsername);
-              String transaction = "chatroomLogout&%%" + messageArray[1] + "&%%" + chatroomInfo.name;
-              startPaxos(transaction);
+              handleChatroomServerChatroomLogout(messageArray);
             } else if (messageArray[0].equalsIgnoreCase("hostChatroomLogout")) {
-              hostUsernameToHearbeatTimer.get(clientUsername).stop();
-              hostUsernameToHearbeatTimer.remove(clientUsername);
-              loggedInUsersAndPasswords.remove(clientUsername);
-              System.out.println("Host has left");
-              // need to force a client to make a new chatroom server.
-              ChatroomInfo chatroomInfo = hostUsernameToChatroomInfos.get(clientUsername);
-              chatroomInfo.removeMember(clientUsername);
-              this.chatroomWriter.write("removeGUI");
-              this.chatroomWriter.newLine();
-              this.chatroomWriter.flush();
-              String newHost = chatroomInfo.getNewHost();
-//              chatroomInfo.setAwaitingReassignment(true);
-              if (newHost != null) {
-                // this is the case that there is another member in the chatroom, so we need to
-                // reboot the chatroom.
-                try {
-                  DatagramSocket datagramSocket = new DatagramSocket();
-                  String message = "chatkey125" + "$@newHost@$@#@" + newHost;
-                  byte[] buffer = message.getBytes();
-                  String groupAddress = chatroomInfo.groupIP;
-                  DatagramPacket packet = new DatagramPacket(buffer, buffer.length, InetAddress.getByName(groupAddress), 4446);
-                  datagramSocket.send(packet);
-                  datagramSocket.close();
-                } catch (SocketException se) {
-                  se.printStackTrace();
-                } catch (IOException ie) {
-                  ie.printStackTrace();
-                }
-              } else {
-                // this is the case that no one is left in the chatroom.
-                hostUsernameToChatroomInfos.remove(clientUsername);
-                chatNameChatroomInfoStore.remove(chatroomInfo.name);
-              }
+              handleChatroomServerHostChatroomLogout(messageArray);
             } else if (messageArray[0].equalsIgnoreCase("backToChatSelection")) {
-              String leaverUsername = messageArray[1];
-              ChatroomInfo chatroomInfo = hostUsernameToChatroomInfos.get(clientUsername);
-              chatroomInfo.removeMember(leaverUsername);
-              String transaction = "backToChatSelection&%%" + messageArray[1] + "&%%" + chatroomInfo.name;
-              startPaxos(transaction);
+              handleChatroomServerBackToChatSelection(messageArray);
             } else if (messageArray[0].equalsIgnoreCase("hostBackToChatSelection")) {
-              hostUsernameToHearbeatTimer.get(clientUsername).stop();
-              hostUsernameToHearbeatTimer.remove(clientUsername);
-              System.out.println("Host has left");
-              // need to force a client to make a new chatroom server.
-              ChatroomInfo chatroomInfo = hostUsernameToChatroomInfos.get(clientUsername);
-              chatroomInfo.removeMember(clientUsername);
-              this.chatroomWriter.write("removeGUI");
-              this.chatroomWriter.newLine();
-              this.chatroomWriter.flush();
-              String newHost = chatroomInfo.getNewHost();
-//              chatroomInfo.setAwaitingReassignment(true);
-              if (newHost != null) {
-                // this is the case that there is another member in the chatroom, so we need to
-                // reboot the chatroom.
-                try {
-                  DatagramSocket datagramSocket = new DatagramSocket();
-                  String message = "chatkey125" + "$@newHost@$@#@" + newHost;
-                  byte[] buffer = message.getBytes();
-                  String groupAddress = chatroomInfo.groupIP;
-                  DatagramPacket packet = new DatagramPacket(buffer, buffer.length, InetAddress.getByName(groupAddress), 4446);
-                  datagramSocket.send(packet);
-                  datagramSocket.close();
-                } catch (SocketException se) {
-                  se.printStackTrace();
-                } catch (IOException ie) {
-                  ie.printStackTrace();
-                }
-              } else {
-                // this is the case that no one is left in the chatroom.
-                hostUsernameToChatroomInfos.remove(clientUsername);
-                chatNameChatroomInfoStore.remove(chatroomInfo.name);
-              }
-            } else if (messageArray[0].equalsIgnoreCase("addedASCII")) {
-              // TODO - maybe add this portion
+              handleChatroomServerHostBackToChatSelection(messageArray);
             }
           } catch (IOException e) {
             isAlive = false;
-            e.printStackTrace();
+            System.out.println("Disconnected from socket since chatroom server host left");
           }
         }
       }
     }
 
+    /**
+     * Update the port that new users will connect to a chatroom server socket through.
+     * @param updatePortMessage
+     * @return string indicating success of adding port
+     */
     private String handleUpdateChatConnectionPort(String[] updatePortMessage) {
       int newPort = Integer.parseInt(updatePortMessage[1]);
       String chatroomName = updatePortMessage[2];
@@ -1046,11 +1206,19 @@ public class LookUpServer {
       return "success";
     }
 
+    /**
+     * Notify through multicast the members remaining in a chatroom that a new chatroom server was
+     * made and who the new host is and what address/port they can connect to the new chatroom server on.
+     * @param notifyMessage
+     * @return a string indicating the success of notifying members
+     */
     private String handleNotifyMembersOfRecreation(String[] notifyMessage) {
       String newServerAddress = notifyMessage[1];
       int newServerPort = Integer.parseInt(notifyMessage[2]);
       String chatName = notifyMessage[3];
       String newHost = notifyMessage[4];
+      // send multicast message to all remaining members of chatroom of who new host is and what
+      // address/port to connect to new chatroom server on.
       try {
         DatagramSocket datagramSocket = new DatagramSocket();
         String message = "chatkey125" + "$@notifyRecreation@$@#@" + newHost + "@#@" + newServerAddress + "@#@" + newServerPort;
@@ -1068,6 +1236,11 @@ public class LookUpServer {
       return "success";
     }
 
+    /**
+     * Get the entire history of chatroom messages from a chatroom.
+     * @param messageInfo
+     * @return a string with the entire history of chatroom messages from a chatroom
+     */
     private String handleGetAllChatroomMessages(String[] messageInfo) {
       String givenChatname = messageInfo[1];
       ChatroomInfo chatroomInfo = chatNameChatroomInfoStore.get(givenChatname);
@@ -1076,6 +1249,15 @@ public class LookUpServer {
       return allSentMessages;
     }
 
+    /**
+     * Add a user by the given username to the chatroom if the chatroom exists. Give the user the
+     * address/port that they can connect to the chatroom server on as well as the group IP so that
+     * they can receive multicast messages from the chatroom server.
+     * @param chatRequest
+     * @return a string either indicating that the chatroom does not exist or indicating a successful
+     *          addition as well as the address/port of the chatroom server socket and group IP
+     *          for multicasts
+     */
     private String handleJoinChat(String[] chatRequest) {
       String chatName = chatRequest[1];
       String username = chatRequest[2];
@@ -1087,13 +1269,18 @@ public class LookUpServer {
         int port = chatroomInfo.port;
         String groupIP = chatroomInfo.groupIP;
         chatroomInfo.putMember(username);
-        System.out.println(username + "joined chatroom called " + chatName);
         return "success@#@" + address + "@#@" + port + "@#@" + groupIP;
       } else {
         return "nonexistent";
       }
     }
 
+    /**
+     * Get the usernames in the given chatroom.
+     * @param usersRequest
+     * @return a string either indicating the chatroom does not exist or indicating all of the
+     *          usernames in a chatroom
+     */
     private String handleGetUsersInChatroom(String[] usersRequest) {
       String chatName = usersRequest[1];
       if (chatNameChatroomInfoStore.containsKey(chatName)) {
@@ -1109,6 +1296,10 @@ public class LookUpServer {
       }
     }
 
+    /**
+     * Get the number of users in each chatroom.
+     * @return a string indicating the number of users in each chatroom
+     */
     private String handleGetNumUsersInChatrooms() {
       StringBuilder response = new StringBuilder();
       for (Map.Entry nameInfoPair : chatNameChatroomInfoStore.entrySet()) {
@@ -1119,7 +1310,12 @@ public class LookUpServer {
       return response.toString();
     }
 
+    /**
+     * Log out user associated with this thread's socket, and remove them from any chatroom they are
+     * in. Finally, close their socket.
+     */
     private void logOutUser() {
+      // TODO - probably startPaxos for this.
       if (clientUsername != null && !hostUsernameToChatroomInfos.containsKey(clientUsername)) {
         // If logged in, log them out.
         System.out.println("THE NON-HOST CLIENT WAS KILLED");
@@ -1137,6 +1333,11 @@ public class LookUpServer {
       }
     }
 
+    /**
+     * Set the buffered reader and writer for the connected client socket, then listen for all
+     * messages coming in from the client and handle them as necessary with helper functions. Log out
+     * user if client disconnects.
+     */
     public void run() {
       BufferedReader reader = null;
       BufferedWriter writer = null;
@@ -1198,6 +1399,12 @@ public class LookUpServer {
     }
   }
 
+  /**
+   * Driver function for creating the registry server and multiple LookUp servers with different
+   * paxos roles. All non-proposers dynamically find open ports to set up their server sockets for
+   * clients.
+   * @param args
+   */
   public static void main(String[] args) {
     int lookUpPort0 = 10000;
     int lookUpPort1 = 53333;

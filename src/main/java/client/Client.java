@@ -374,7 +374,7 @@ public class Client {
         // set up socket to connect to chatroom server to be able to send messages and logout notifications
         connectSocketToChatroomServer();
         return responseArray[0];
-      } else { // case where response is "exists"
+      } else { // case where response is "non-existent"
         return responseArray[0];
       }
     } catch (IOException e) {
