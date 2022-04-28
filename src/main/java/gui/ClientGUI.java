@@ -8,6 +8,7 @@ import java.util.ArrayList;
 import javax.swing.*;
 
 import client.Client;
+import logger.ProgLogger;
 
 /**
  * Class to handle all of the visual aspects of the client's application. A GUI is created and
@@ -17,6 +18,7 @@ public class ClientGUI {
 
   // Vars for construction / login / register
   public Client client;
+  public ProgLogger clientLogger;
   public JFrame frame;
   public JPanel panel;
   public ArrayList<Component> componentsOnPanel;
@@ -72,7 +74,8 @@ public class ClientGUI {
    * is in the ChatroomServerGUI.
    * @param client
    */
-  public ClientGUI(Client client) {
+  public ClientGUI(Client client, ProgLogger logger) {
+    this.clientLogger = logger;
     this.client = client;
     this.frame = new JFrame();
     this.panel = new JPanel();
@@ -94,21 +97,27 @@ public class ClientGUI {
       // send login username and password
       if (loginUsername.getText().length() == 0 || loginPassword.getText().length() == 0) {
         openToastLabel("Provide username and password!");
+        clientLogger.logger.info("Username or password in login was empty when login button clicked.");
       } else if (loginUsername.getText().contains("@#@") || loginUsername.getText().contains("%&%")
               || loginPassword.getText().contains("@#@") || loginPassword.getText().contains("%&%")) {
         // These are special reserved sequences since all communication is through sockets and
         // delineators between content must be kept unique.
         openToastLabel("Do not use special reserved sequences '@#@' or '%&%'!");
+        clientLogger.logger.info("Special reserved sequence attempted to be used in login textbox");
       } else {
         String response = client.attemptLogin(loginUsername.getText(), loginPassword.getText());
         // change GUI to open chat selection screen
         if (response.equalsIgnoreCase("success")) {
+          clientLogger.logger.info("Successfully logged in as " + loginUsername.getText());
           myUsername = loginUsername.getText();
           openChatSelectionScreen();
         } else if (response.equalsIgnoreCase("incorrect")) {
           openToastLabel("Incorrect username/password!");
+          clientLogger.logger.info("Incorrect username/password given: " + loginUsername.getText());
         } else {
           openToastLabel("This user already logged in!");
+          clientLogger.logger.info("User with username " + loginUsername.getText()
+                  + " is already logged in");
         }
       }
     }
@@ -126,18 +135,22 @@ public class ClientGUI {
       // send register username and password
       if (registerUsername.getText().length() == 0 || registerPassword.getText().length() == 0) {
         openToastLabel("Provide username and password!");
+        clientLogger.logger.info("Username or password in register was empty when register button clicked.");
       } else if (registerUsername.getText().contains("@#@") || registerUsername.getText().contains("%&%")
               || registerPassword.getText().contains("@#@") || registerPassword.getText().contains("%&%")) {
         // These are special reserved sequences since all communication is through sockets and
         // delineators between content must be kept unique.
         openToastLabel("Do not use special reserved sequences '@#@' or '%&%'!");
+        clientLogger.logger.info("Special reserved sequence attempted to be used in register textbox");
       } else {
         String response = client.attemptRegister(registerUsername.getText(), registerPassword.getText());
         if (response.equalsIgnoreCase("success")) {
+          clientLogger.logger.info("Successfully registered with username " + registerUsername.getText());
           myUsername = registerUsername.getText();
           openChatSelectionScreen();
         } else {
           openToastLabel("Already existing username!");
+          clientLogger.logger.info("User with username " + registerUsername.getText() + " already exists");
         }
       }
     }
@@ -176,16 +189,21 @@ public class ClientGUI {
       chatroomName = joinChatField.getText();
       if (chatroomName.length() == 0) {
         openToastLabel("Provide a chatroom name!");
+        clientLogger.logger.info("Empty textbox for join chatroom attempted to submit");
       } else if (chatroomName.contains("@#@") || chatroomName.contains("%&%")) {
         // These are special reserved sequences since all communication is through sockets and
         // delineators between content must be kept unique.
         openToastLabel("Do not use special reserved sequences '@#@' or '%&%'!");
+        clientLogger.logger.info("Special reserved sequence attempted to be used in join chat textbox");
       } else {
         String response = client.attemptJoinChat(chatroomName);
         if (response.equalsIgnoreCase("success")) {
           openChatroomScreen();
+          clientLogger.logger.info("Successfully joined chatroom " + chatroomName);
         } else { // lookup server returns "nonexistent"
           openToastLabel("Chatroom name does not exist!");
+          clientLogger.logger.info("Nonexistent chatroom by name of "
+                  + chatroomName + " was attempted to join");
         }
       }
     }
@@ -203,16 +221,21 @@ public class ClientGUI {
       chatroomName = createChatField.getText();
       if (chatroomName.length() == 0) {
         openToastLabel("Provide a chatroom name!");
+        clientLogger.logger.info("Empty textbox for create chatroom attempted to submit");
       } else if (chatroomName.contains("@#@") || chatroomName.contains("%&%")) {
         // These are special reserved sequences since all communication is through sockets and
         // delineators between content must be kept unique.
         openToastLabel("Do not use special reserved sequences '@#@' or '%&%'!");
+        clientLogger.logger.info("Special reserved sequence attempted to be used in create chat textbox");
       } else {
         String response = client.attemptCreateChat(chatroomName);
         if (response.equalsIgnoreCase("success")) {
           openChatroomScreen();
+          clientLogger.logger.info("Successfully created chatroom " + chatroomName);
         } else { // when lookup server returns "exists"
           openToastLabel("A chatroom already has that name!");
+          clientLogger.logger.info("Existing chatroom by name of "
+                  + chatroomName + " was attempted to create");
         }
       }
     }
@@ -229,8 +252,9 @@ public class ClientGUI {
       String response = client.attemptChatSelectionLogout();
       if (response.equalsIgnoreCase("success")) {
         openLoginRegisterScreen();
+        clientLogger.logger.info("Successfully logged out user " + myUsername);
       } else {
-        System.out.println("Could not log out user.");
+        clientLogger.logger.warning("Could not log out user " + myUsername);
       }
     }
   }
@@ -246,8 +270,9 @@ public class ClientGUI {
       String response = client.attemptChatroomLogout();
       if (response.equalsIgnoreCase("success")) {
         openLoginRegisterScreen();
+        clientLogger.logger.info("Successfully logged out user " + myUsername);
       } else {
-        System.out.println("Could not log out user.");
+        clientLogger.logger.warning("Could not log out user " + myUsername);
       }
     }
   }
@@ -264,12 +289,15 @@ public class ClientGUI {
       String newMessage = chatroomNewMessageField.getText();
       if (newMessage.length() == 0) {
         openToastLabel("Write a message to send!");
+        clientLogger.logger.info("Empty message field attempted to send");
       } else if (newMessage.contains("@#@") || newMessage.contains("%&%") || newMessage.contains("~##~")) {
         // These are special reserved sequences since all communication is through sockets and
         // delineators between content must be kept unique.
         openToastLabel("Do not use special reserved sequences '@#@', '%&%', or '~##~'!");
+        clientLogger.logger.info("Special reserved sequence attempted to send in chatroom");
       } else {
         String response = client.sendNewChatroomMessage(chatroomNewMessageField.getText());
+        clientLogger.logger.info("The following message was sent: " + chatroomNewMessageField.getText());
       }
     }
   }
@@ -280,6 +308,7 @@ public class ClientGUI {
   public class GetUsersInChatroomButtonListener implements ActionListener {
     @Override
     public void actionPerformed(ActionEvent e) {
+      clientLogger.logger.info("Updated the users in the chatroom");
       ArrayList<String> members = client.attemptGetUsersInChatroom(chatroomName);
       roomMembersTextArea.setText("");
       for (String member : members) {
@@ -298,14 +327,15 @@ public class ClientGUI {
       String response = client.attemptBackToChatSelection();
       if (response.equalsIgnoreCase("success")) {
         openChatSelectionScreen();
+        clientLogger.logger.info("Successfully went back to chat selection screen");
       } else {
-        System.out.println("Could not go back to chat selection screen.");
+        clientLogger.logger.warning("Could not go back to chat selection screen.");
       }
     }
   }
 
   /**
-   * Remove all of the Swing components on panel so that a new screen be put up.
+   * Remove all of the Swing components on panel so that a new screen can be put up.
    */
   public void removeAllComponents() {
     this.componentsOnPanel.forEach((component -> {
@@ -329,6 +359,7 @@ public class ClientGUI {
    */
   public void displayNewMessage(String sender, String message) {
     this.chatroomTextArea.append(sender + ": " + message + "\n");
+    clientLogger.logger.info("Displaying message: " + message + " from user: " + sender);
   }
 
   /**

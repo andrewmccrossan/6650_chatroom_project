@@ -14,6 +14,7 @@ import java.util.ArrayList;
 import java.util.Date;
 
 import gui.ClientGUI;
+import logger.ProgLogger;
 import server.ChatroomServer;
 
 /**
@@ -25,6 +26,7 @@ import server.ChatroomServer;
 public class Client {
 
   long clientID;
+  ProgLogger logger;
   String proposerLookUphostname;
   ClientGUI clientGUI;
   int[] proposerLookUpPorts;
@@ -52,8 +54,9 @@ public class Client {
    * connection, etc.
    * @param clientID
    */
-  public Client(long clientID) {
+  public Client(long clientID, ProgLogger logger) {
     this.clientID = clientID;
+    this.logger = logger;
     this.username = null;
     this.proposerLookUphostname = "localhost";
     // THe ports for the proposer LookUp servers' sockets that are waiting to accept a connection.
@@ -576,8 +579,14 @@ public class Client {
   public static void main(String[] args) {
     // Create the ClientGUI
     long clientID = new Date().getTime();
-    Client client = new Client(clientID);
-    ClientGUI clientGUI = new ClientGUI(client);
+    ProgLogger logger = null;
+    try {
+      logger = new ProgLogger("client_" + clientID + "_log.txt");
+    } catch (IOException e) {
+      System.out.println("Could not set up logger for client.");
+    }
+    Client client = new Client(clientID, logger);
+    ClientGUI clientGUI = new ClientGUI(client, logger);
     client.setClientGUI(clientGUI);
   }
 }
