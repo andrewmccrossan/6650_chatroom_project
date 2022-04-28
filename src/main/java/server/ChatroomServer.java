@@ -15,6 +15,7 @@ import java.net.UnknownHostException;
 
 import client.Client;
 import gui.ChatroomServerGUI;
+import logger.ProgLogger;
 
 /**
  * Chatroom server class that handles all the logic for a chatroom, including receiving messages and
@@ -27,6 +28,7 @@ public class ChatroomServer {
   public int ID;
   public String chatroomName;
   public Client hostClient;
+  public ProgLogger chatroomLogger;
   public ChatroomServerGUI chatroomServerGUI;
   public ServerSocket serverSocketForClients;
   public int portForClients;
@@ -57,6 +59,11 @@ public class ChatroomServer {
     this.ID = ID;
     this.chatroomName = chatroomName;
     this.hostClient = hostClient;
+    try {
+      this.chatroomLogger = new ProgLogger("chatroomServer_" + ID + "_log.txt");
+    } catch (IOException e) {
+      System.out.println("Could not create logger");
+    }
     // create the GUI that will display the history of all messages
     this.chatroomServerGUI = new ChatroomServerGUI(this);
     this.heartbeatAddress = heartbeatAddress;
@@ -65,7 +72,7 @@ public class ChatroomServer {
     try {
       this.group = InetAddress.getByName(groupIP);
     } catch (UnknownHostException e) {
-      e.printStackTrace();
+      chatroomLogger.logger.warning("Unknown host for group IP");
     }
     // create a server socket for clients joining chatroom to connect to
     try {
@@ -74,7 +81,7 @@ public class ChatroomServer {
       NewUserConnector newUserConnector = new NewUserConnector();
       new Thread(newUserConnector).start();
     } catch (IOException e) {
-      e.printStackTrace();
+      chatroomLogger.logger.warning("Could not create server socket for clients to connect to");
     }
     // connect to LookUp server to receive heartbeats and send any chatroom information
     try {
@@ -83,7 +90,7 @@ public class ChatroomServer {
       HeartbeatHandler heartbeatHandler = new HeartbeatHandler(this.heartbeatSocket);
       new Thread(heartbeatHandler).start();
     } catch (IOException e) {
-      e.printStackTrace();
+      chatroomLogger.logger.info("Could not connect socket to LookUp server");
     }
   }
 
@@ -98,8 +105,9 @@ public class ChatroomServer {
         Socket clientSocket = null;
         try {
           clientSocket = serverSocketForClients.accept();
+          chatroomLogger.logger.info("Accepted new client socket connection");
         } catch (IOException e) {
-          e.printStackTrace();
+          chatroomLogger.logger.warning("Failed to accept new client socket connection");
         }
         ClientSocketHandler clientSocketHandler = new ClientSocketHandler(clientSocket);
         new Thread(clientSocketHandler).start();
@@ -135,7 +143,7 @@ public class ChatroomServer {
         heartbeatReader = new BufferedReader(new InputStreamReader(socket.getInputStream()));
         heartbeatWriter = new BufferedWriter(new OutputStreamWriter(socket.getOutputStream()));
       } catch (IOException e) {
-        e.printStackTrace();
+        chatroomLogger.logger.warning("Could not create buffered reader and writer for LookUp server socket");
       }
       while (true) {
         try {
@@ -143,12 +151,13 @@ public class ChatroomServer {
           String[] messageArray = line.split("@#@");
           if (messageArray[0].equalsIgnoreCase("heartbeat")) {
             // don't do anything since the LookUp server knows if this message didn't go through
+            chatroomLogger.logger.info("Heartbeat received");
           } else if (messageArray[0].equalsIgnoreCase("removeGUI")) {
             // remove the chatroom server GUI window
             chatroomServerGUI.removeFrame();
           }
         } catch (IOException e) {
-          e.printStackTrace();
+          chatroomLogger.logger.warning("Could not read socket message from LookUp server");
         }
       }
     }
@@ -166,6 +175,7 @@ public class ChatroomServer {
       String actualMessage = messageInfo[1];
       chatroomServerGUI.displayNewMessage(sender, actualMessage);
     }
+    chatroomLogger.logger.info("Replenished log display of history of messages");
   }
 
   /**
@@ -182,11 +192,11 @@ public class ChatroomServer {
       datagramSocketForMulticast.send(packet);
       datagramSocketForMulticast.close();
     } catch (SocketException se) {
-      se.printStackTrace();
+      chatroomLogger.logger.warning("Socket malfunction attempting to multicast");
     } catch (IOException e) {
-      e.printStackTrace();
+      chatroomLogger.logger.warning("Socket IO malfunction attempting to multicast");
     }
-
+    chatroomLogger.logger.info("Multicasted message to member clients");
   }
 
   /**
@@ -224,8 +234,9 @@ public class ChatroomServer {
         heartbeatWriter.write("messageSent@#@" + sender + "@#@" + actualMessage);
         heartbeatWriter.newLine();
         heartbeatWriter.flush();
+        chatroomLogger.logger.info("Notified LookUp server of new message");
       } catch (IOException e) {
-        e.printStackTrace();
+        chatroomLogger.logger.warning("Could not notify LookUp server of message sent");
       }
       chatroomServerGUI.displayNewMessage(sender, actualMessage);
     }
@@ -245,8 +256,9 @@ public class ChatroomServer {
           heartbeatWriter.write("hostChatroomLogout" + "@#@" + leaverUsername);
           heartbeatWriter.newLine();
           heartbeatWriter.flush();
+          chatroomLogger.logger.info("Notified LookUp server of host logging out");
         } catch (IOException e) {
-          e.printStackTrace();
+          chatroomLogger.logger.warning("Could not notify LookUp server of host logging out");
         }
       } else {
         // case that the leaving user is not the host client
@@ -255,8 +267,9 @@ public class ChatroomServer {
           heartbeatWriter.write("chatroomLogout@#@" + leaverUsername);
           heartbeatWriter.newLine();
           heartbeatWriter.flush();
+          chatroomLogger.logger.info("Notified LookUp server of member client leaving chatroom");
         } catch (IOException e) {
-          e.printStackTrace();
+          chatroomLogger.logger.warning("Could not notify LookUp server of member client leaving chatroom");
         }
       }
     }
@@ -277,8 +290,9 @@ public class ChatroomServer {
           heartbeatWriter.write("hostBackToChatSelection@#@" + leaverUsername);
           heartbeatWriter.newLine();
           heartbeatWriter.flush();
+          chatroomLogger.logger.info("Notified LookUp server of host going back to chat selection screen");
         } catch (IOException e) {
-          e.printStackTrace();
+          chatroomLogger.logger.warning("Could not notify LookUp server of host going back to chat selection screen");
         }
       } else {
         // case that the leaving user is not the host client
@@ -287,8 +301,9 @@ public class ChatroomServer {
           heartbeatWriter.write("backToChatSelection@#@" + leaverUsername);
           heartbeatWriter.newLine();
           heartbeatWriter.flush();
+          chatroomLogger.logger.info("Notified LookUp server of member client going back to chat selection screen");
         } catch (IOException e) {
-          e.printStackTrace();
+          chatroomLogger.logger.warning("Could not notify LookUp server of member client going back to chat selection screen");
         }
       }
     }
@@ -307,7 +322,7 @@ public class ChatroomServer {
         writer = new BufferedWriter(
                 new OutputStreamWriter(this.clientSocket.getOutputStream()));
       } catch (IOException e) {
-        e.printStackTrace();
+        chatroomLogger.logger.warning("Could not create buffered reader and writer for client socket");
       }
       // continuously listen to client's socket for messages
       while (true) {
@@ -316,6 +331,7 @@ public class ChatroomServer {
           // in case of client exiting, close socket.
           if (line == null) {
             this.clientSocket.close();
+            chatroomLogger.logger.info("Closed socket from exiting client");
             break;
           }
           String[] messageArray = line.split("@#@");
@@ -326,10 +342,10 @@ public class ChatroomServer {
           } else if (messageArray[0].equalsIgnoreCase("backToChatSelection")) {
             handleBackToChatSelection(messageArray[1]);
           } else {
-            System.out.println("invalidRequestType in chatroomserver: " + messageArray[0]);
+            chatroomLogger.logger.info("Invalid request type: " + messageArray[0] + " received from client");
           }
         } catch (IOException e) {
-          e.printStackTrace();
+          chatroomLogger.logger.warning("Could not successfully read message from client socket");
         }
       }
     }

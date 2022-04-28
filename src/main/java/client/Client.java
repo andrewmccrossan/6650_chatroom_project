@@ -68,6 +68,7 @@ public class Client {
     for (int i = 0; i < this.proposerLookUpPorts.length; i++) {
       try {
         Socket socket = new Socket(this.proposerLookUphostname, this.proposerLookUpPorts[i]);
+        this.logger.logger.info("Connected to LookUp server socket");
         BufferedWriter writer = new BufferedWriter(
                 new OutputStreamWriter(socket.getOutputStream()));
         BufferedReader reader = new BufferedReader(
@@ -81,7 +82,7 @@ public class Client {
         this.unusedLookUpPort = proposerLookUpPorts[Math.abs(i-1)];
         break;
       } catch (IOException e) {
-        e.printStackTrace();
+        logger.logger.warning("Unable to connect to LookUp server");
       }
     }
   }
@@ -126,6 +127,7 @@ public class Client {
     // attempt to connect to another proposer
     Socket socket = null;
     try {
+      logger.logger.info("Attempting to use another LookUp server");
       socket = new Socket(proposerLookUphostname, this.unusedLookUpPort);
       BufferedWriter writer = new BufferedWriter(
               new OutputStreamWriter(socket.getOutputStream()));
@@ -135,7 +137,7 @@ public class Client {
       this.reader = reader;
       this.writer = writer;
     } catch (IOException e) {
-      e.printStackTrace();
+      logger.logger.severe("Unable to use another LookUp server");
     }
   }
 
@@ -194,7 +196,6 @@ public class Client {
       this.chatRoomServerWriter.flush();
       return "success";
     } catch (IOException e) {
-      e.printStackTrace();
       return "unsuccessful";
     }
   }
@@ -229,7 +230,7 @@ public class Client {
       this.chatRoomServerWriter.newLine();
       this.chatRoomServerWriter.flush();
     } catch (IOException e) {
-      e.printStackTrace();
+      logger.logger.warning("Unable to send new chatroom message");
     }
     return "success";
   }
@@ -253,8 +254,10 @@ public class Client {
     public void run() {
       try {
         MulticastSocket multicastSocket = new MulticastSocket(4446);
+        logger.logger.info("Connected to multicast socket.");
         this.multicastSocket = multicastSocket;
         multicastSocket.joinGroup(groupIP);
+        logger.logger.info("Joined multicast group " + groupIP);
         this.isAlive = true;
         // continuously listen to this multicast
         while (isAlive) {
@@ -276,6 +279,7 @@ public class Client {
             // host has been chosen.
             if (fullMessage[0].equalsIgnoreCase("$@newHost@$")) {
               String newHost = fullMessage[1];
+              logger.logger.info("Received notification that new host " + newHost + " was chosen");
               if (username.equalsIgnoreCase(newHost)) {
                 attemptReCreateChat(mostRecentChatroomName);
               }
@@ -284,6 +288,7 @@ public class Client {
             } else if (fullMessage[0].equalsIgnoreCase("$@notifyRecreation@$")) {
               String newServerHost = fullMessage[1];
               String newServerAddress = fullMessage[2];
+              logger.logger.info("Received notification that chatroom is being recreated");
               if (!username.equalsIgnoreCase(newServerHost)) {
                 // Documented bug in JDK that InetAddress.getByName() does not function properly
                 // with 127.0.0.1 since it does not recognize it as localhost without modifying local
@@ -306,7 +311,7 @@ public class Client {
           }
         }
       } catch (IOException e) {
-        e.printStackTrace();
+        logger.logger.severe("Multicast socket connection failed");
       }
     }
 
@@ -318,7 +323,7 @@ public class Client {
       try {
         multicastSocket.leaveGroup(groupIP);
       } catch (IOException e) {
-        e.printStackTrace();
+        logger.logger.warning("Could not leave multicast group");
       }
       multicastSocket.close();
     }
@@ -338,6 +343,7 @@ public class Client {
       this.writer.newLine();
       this.writer.flush();
       String response = this.reader.readLine();
+      logger.logger.info("Recreating chatroom after last host left");
       String[] responseArray = response.split("@#@");
       if (responseArray[0].equalsIgnoreCase("success")) {
         int reUsedID = Integer.parseInt(responseArray[1]);
@@ -356,6 +362,7 @@ public class Client {
         this.writer.newLine();
         this.writer.flush();
         String updateResponse = this.reader.readLine();
+        logger.logger.info("Updated chatroom server connection port");
         if (updateResponse.equalsIgnoreCase("success")) {
           // Tell the LookUp server what address and port this recreated chatroom is listening for members
           // on so that the LookUp server can send this information to the old members.
@@ -363,11 +370,13 @@ public class Client {
           this.writer.newLine();
           this.writer.flush();
           String notifyResponse = this.reader.readLine();
+          logger.logger.info("Notified all other members of chatroom of chatroom recreation");
           // Get the entire history of messages for this chatroom from the LookUp server.
           this.writer.write("getAllChatroomMessages@#@" + chatName);
           this.writer.newLine();
           this.writer.flush();
           String chatroomMessages = this.reader.readLine();
+          logger.logger.info("Received history of all chatroom messages");
           if (chatroomMessages.length() > 0) {
             String[] splitUpChatroomMessages = chatroomMessages.split("~##~");
             this.hostedChatroomServer.replenishLogDisplay(splitUpChatroomMessages);
@@ -403,6 +412,7 @@ public class Client {
       this.writer.newLine();
       this.writer.flush();
       String response = this.reader.readLine();
+      logger.logger.info("Create new chat " + chatName);
       String[] responseArray = response.split("@#@");
       if (responseArray[0].equalsIgnoreCase("success")) {
         this.mostRecentChatroomName = chatName;
@@ -453,6 +463,7 @@ public class Client {
       this.writer.newLine();
       this.writer.flush();
       String response = this.reader.readLine();
+      logger.logger.info("Received number of users in each chatroom");
       if (response.equalsIgnoreCase("")) {
         return new ArrayList<>();
       }
@@ -484,6 +495,7 @@ public class Client {
       String[] responseArray = response.split("@#@");
       if (responseArray[0].equalsIgnoreCase("success")) {
         // if this client was listening to another multicast socket then that should be turned off
+        logger.logger.info("Successfully joined new chatroom");
         if (this.currentMulticastMessageReceiver != null) {
           this.currentMulticastMessageReceiver.turnOff();
         }
@@ -526,6 +538,7 @@ public class Client {
       this.writer.newLine();
       this.writer.flush();
       String response = this.reader.readLine();
+      logger.logger.info("Received users in current chatroom");
       if (response.equalsIgnoreCase("nonexistent")) {
         return new ArrayList<>();
       }
@@ -555,20 +568,10 @@ public class Client {
               new InputStreamReader(socketConnectedToChatroomServer.getInputStream()));
       this.chatRoomServerReader = reader;
       this.chatRoomServerWriter = writer;
+      logger.logger.info("Connected to chatroom server socket");
     } catch (IOException e) {
-      e.printStackTrace();
+      logger.logger.warning("Could not connect to chatroom server socket");
     }
-  }
-
-  /**
-   * Return current time to the millisecond precision.
-   * @return String
-   */
-  public static String currTime() {
-    SimpleDateFormat sdf = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss.SSS");
-    Date now = new Date();
-    String strDate = sdf.format(now);
-    return strDate + " : ";
   }
 
   /**

@@ -24,7 +24,7 @@ public class ProgLogger {
       logFile.createNewFile();
     }
     handler = new FileHandler(filename, true);
-    logger = Logger.getLogger("test");
+    logger = Logger.getLogger(filename);
     logger.addHandler(handler);
     MilliLogFormatter logFormatter = new MilliLogFormatter();
     handler.setFormatter(logFormatter);

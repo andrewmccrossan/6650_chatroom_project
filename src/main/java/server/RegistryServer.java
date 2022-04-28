@@ -12,6 +12,8 @@ import java.util.Collections;
 import java.util.Iterator;
 import java.util.List;
 
+import logger.ProgLogger;
+
 /**
  * Registry server class that orchestrates connecting all of the LookUp servers by sockets. The
  * registry server listens for LookUp servers to connect to it, and then tells all of the already
@@ -22,6 +24,7 @@ import java.util.List;
  */
 public class RegistryServer {
 
+  ProgLogger registryLogger;
   ServerSocket serverSocket;
   public List paxosServerInfos;
   public int myPort;
@@ -35,13 +38,15 @@ public class RegistryServer {
   public RegistryServer() {
     try {
       this.paxosServerInfos = Collections.synchronizedList(new ArrayList());
+      this.registryLogger = new ProgLogger("registryServer_log.txt");
       // port for ServerSocket is dynamically allocated.
       this.serverSocket = new ServerSocket(0);
       this.myPort = this.serverSocket.getLocalPort();
       this.myAddress = this.serverSocket.getInetAddress().getHostAddress();
       new Thread(new NewServerWaiter()).start();
+      registryLogger.logger.info("Set up server socket for LookUp servers to connect to");
     } catch (IOException e) {
-      e.printStackTrace();
+      registryLogger.logger.warning("Could not set up server socket for LookUp servers to connect to");
     }
   }
 
@@ -57,10 +62,11 @@ public class RegistryServer {
         Socket newServerSocket = null;
         try {
           newServerSocket = serverSocket.accept();
+          registryLogger.logger.info("New LookUp server socket connection accepted");
           NewServerSocketHandler newServerSocketHandler = new NewServerSocketHandler(newServerSocket);
           new Thread(newServerSocketHandler).start();
         } catch (IOException e) {
-          e.printStackTrace();
+          registryLogger.logger.warning("Could not accept LookUp server socket connection");
         }
       }
     }
@@ -117,26 +123,31 @@ public class RegistryServer {
                 new InputStreamReader(this.newServerSocket.getInputStream()));
         this.newServerWriter = new BufferedWriter(
                 new OutputStreamWriter(this.newServerSocket.getOutputStream()));
-        PaxosServerInfo newPaxosServerInfo = new PaxosServerInfo(this.newServerAddress,
-                this.newServerPort, this.newServerSocket, this.newServerWriter);
+//        PaxosServerInfo newPaxosServerInfo = new PaxosServerInfo(this.newServerAddress,
+//                this.newServerPort, this.newServerSocket, this.newServerWriter);
         String line = this.newServerReader.readLine();
         String[] messageArray = line.split("@#@");
         this.newServerAddress = messageArray[0];
         this.newServerPort = Integer.parseInt(messageArray[1]);
         this.newServerPaxosRole = messageArray[2];
+        PaxosServerInfo newPaxosServerInfo = new PaxosServerInfo(this.newServerAddress,
+                this.newServerPort, this.newServerSocket, this.newServerWriter);
         // Tell each server that has already connected to make a socket connection to the new server
         synchronized (paxosServerInfos) {
           Iterator i = paxosServerInfos.iterator();
           while (i.hasNext()) {
             PaxosServerInfo info = (PaxosServerInfo) i.next();
-            info.writer.write("startConnection@#@" + this.newServerAddress + "@#@" + this.newServerPort + "@#@" + this.newServerPaxosRole);
+            info.writer.write("startConnection@#@" + this.newServerAddress + "@#@"
+                    + this.newServerPort + "@#@" + this.newServerPaxosRole);
             info.writer.newLine();
             info.writer.flush();
           }
         }
         paxosServerInfos.add(newPaxosServerInfo);
+        registryLogger.logger.info("Instructed old LookUp servers to instigate socket connection to new LookUp server");
       } catch (IOException e) {
-        e.printStackTrace();
+        registryLogger.logger.warning("Could not receive address/port/role info from new LookUp" +
+                " server and relay to old LookUp servers");
       }
     }
   }
@@ -167,6 +178,8 @@ public class RegistryServer {
       this.portForPaxosServers = portForPaxosServers;
       this.registryPaxosServer = registryPaxosServer;
       this.writer = writer;
+      registryLogger.logger.info("Created new PaxosServerInfo for LookUp server with socket" +
+              " at address " + addressForPaxosServers + " and port " + portForPaxosServers);
     }
   }
 }

@@ -360,7 +360,7 @@ public class LookUpServer {
      */
     public void handlePromise(String[] messageArray) {
       long proposalNum = Long.parseLong(messageArray[1]);
-      long givenMaxAcceptedProposalNumber = Integer.parseInt(messageArray[2]);
+      long givenMaxAcceptedProposalNumber = Long.parseLong(messageArray[2]);
       String givenMaxAcceptedProposalTransaction = messageArray[3];
       if (givenMaxAcceptedProposalNumber > largestPromiseNum) {
         largestPromiseNum = givenMaxAcceptedProposalNumber;

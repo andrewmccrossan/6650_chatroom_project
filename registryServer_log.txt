@@ -1,0 +1,34 @@
+2022-04-28 14:43:48.340 : INFO, Message: Set up server socket for LookUp servers to connect to
+2022-04-28 14:43:48.529 : INFO, Message: New LookUp server socket connection accepted
+2022-04-28 14:43:48.534 : INFO, Message: New LookUp server socket connection accepted
+2022-04-28 14:43:48.538 : INFO, Message: New LookUp server socket connection accepted
+2022-04-28 14:43:48.540 : INFO, Message: New LookUp server socket connection accepted
+2022-04-28 14:43:48.543 : INFO, Message: New LookUp server socket connection accepted
+2022-04-28 14:43:48.548 : INFO, Message: New LookUp server socket connection accepted
+2022-04-28 14:43:48.550 : INFO, Message: New LookUp server socket connection accepted
+2022-04-28 14:43:48.553 : INFO, Message: New LookUp server socket connection accepted
+2022-04-28 14:43:48.554 : INFO, Message: New LookUp server socket connection accepted
+2022-04-28 14:43:48.556 : INFO, Message: New LookUp server socket connection accepted
+2022-04-28 14:43:48.559 : INFO, Message: New LookUp server socket connection accepted
+2022-04-28 14:43:48.584 : INFO, Message: Created new PaxosServerInfo for LookUp server with socket at address 0.0.0.0 and port 51103
+2022-04-28 14:43:48.584 : INFO, Message: Created new PaxosServerInfo for LookUp server with socket at address 0.0.0.0 and port 51109
+2022-04-28 14:43:48.585 : INFO, Message: Created new PaxosServerInfo for LookUp server with socket at address 0.0.0.0 and port 51118
+2022-04-28 14:43:48.585 : INFO, Message: Created new PaxosServerInfo for LookUp server with socket at address 0.0.0.0 and port 51106
+2022-04-28 14:43:48.585 : INFO, Message: Created new PaxosServerInfo for LookUp server with socket at address 0.0.0.0 and port 51115
+2022-04-28 14:43:48.586 : INFO, Message: Created new PaxosServerInfo for LookUp server with socket at address 0.0.0.0 and port 51121
+2022-04-28 14:43:48.586 : INFO, Message: Created new PaxosServerInfo for LookUp server with socket at address 0.0.0.0 and port 51124
+2022-04-28 14:43:48.586 : INFO, Message: Created new PaxosServerInfo for LookUp server with socket at address 0.0.0.0 and port 51100
+2022-04-28 14:43:48.586 : INFO, Message: Created new PaxosServerInfo for LookUp server with socket at address 0.0.0.0 and port 51112
+2022-04-28 14:43:48.587 : INFO, Message: Created new PaxosServerInfo for LookUp server with socket at address 0.0.0.0 and port 51097
+2022-04-28 14:43:48.587 : INFO, Message: Created new PaxosServerInfo for LookUp server with socket at address 0.0.0.0 and port 51095
+2022-04-28 14:43:48.587 : INFO, Message: Instructed old LookUp servers to instigate socket connection to new LookUp server
+2022-04-28 14:43:48.597 : INFO, Message: Instructed old LookUp servers to instigate socket connection to new LookUp server
+2022-04-28 14:43:48.598 : INFO, Message: Instructed old LookUp servers to instigate socket connection to new LookUp server
+2022-04-28 14:43:48.598 : INFO, Message: Instructed old LookUp servers to instigate socket connection to new LookUp server
+2022-04-28 14:43:48.599 : INFO, Message: Instructed old LookUp servers to instigate socket connection to new LookUp server
+2022-04-28 14:43:48.600 : INFO, Message: Instructed old LookUp servers to instigate socket connection to new LookUp server
+2022-04-28 14:43:48.600 : INFO, Message: Instructed old LookUp servers to instigate socket connection to new LookUp server
+2022-04-28 14:43:48.606 : INFO, Message: Instructed old LookUp servers to instigate socket connection to new LookUp server
+2022-04-28 14:43:48.609 : INFO, Message: Instructed old LookUp servers to instigate socket connection to new LookUp server
+2022-04-28 14:43:48.609 : INFO, Message: Instructed old LookUp servers to instigate socket connection to new LookUp server
+2022-04-28 14:43:48.609 : INFO, Message: Instructed old LookUp servers to instigate socket connection to new LookUp server

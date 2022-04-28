@@ -1,2 +1,0 @@
-2022-04-27 23:03:22.822 : INFO, Message: User with username frank is already logged in
-2022-04-27 23:03:30.497 : INFO, Message: Successfully logged in as admin

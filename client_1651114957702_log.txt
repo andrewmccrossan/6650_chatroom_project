@@ -1,3 +1,0 @@
-2022-04-27 23:02:51.698 : INFO, Message: User with username admin already exists
-2022-04-27 23:02:59.314 : INFO, Message: Incorrect username/password given: jessica and gold234
-2022-04-27 23:03:08.145 : INFO, Message: Successfully registered with username frank and password mypass999

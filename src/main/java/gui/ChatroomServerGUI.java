@@ -5,6 +5,7 @@ import java.util.ArrayList;
 
 import javax.swing.*;
 
+import logger.ProgLogger;
 import server.ChatroomServer;
 
 /**
@@ -14,6 +15,7 @@ import server.ChatroomServer;
 public class ChatroomServerGUI {
 
   public ChatroomServer chatroomServer;
+  public ProgLogger chatroomLogger;
   public JFrame frame;
   public JPanel panel;
   public ArrayList<Component> componentsOnPanel;
@@ -29,6 +31,8 @@ public class ChatroomServerGUI {
    */
   public ChatroomServerGUI(ChatroomServer chatroomServer) {
     this.chatroomServer = chatroomServer;
+    this.chatroomLogger = chatroomServer.chatroomLogger;
+    chatroomLogger.logger.info("Created chatroomServerGUI");
     this.frame = new JFrame();
     this.panel = new JPanel();
     this.componentsOnPanel = new ArrayList<>();
@@ -58,6 +62,7 @@ public class ChatroomServerGUI {
     frame.setTitle(this.chatroomServer.chatroomName + " Chatroom Server");
     frame.pack();
     frame.setVisible(true);
+    chatroomLogger.logger.info("Opened chatroom server screen");
   }
 
   /**
@@ -76,6 +81,7 @@ public class ChatroomServerGUI {
    */
   public void displayNewMessage(String sender, String message) {
     this.chatroomServerTextArea.append(sender + " sent message: \"" + message + "\"\n");
+    chatroomLogger.logger.info("Displayed new message: " + message + " from sender: " + sender);
   }
 
   /**
@@ -92,5 +98,6 @@ public class ChatroomServerGUI {
    */
   public void removeFrame() {
     this.frame.dispose();
+    chatroomLogger.logger.info("Removed chatroom server GUI screen");
   }
 }
