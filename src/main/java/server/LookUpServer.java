@@ -21,6 +21,8 @@ import java.util.concurrent.ConcurrentHashMap;
 
 import javax.swing.*;
 
+import logger.ProgLogger;
+
 /**
  * LookUp server class that has several purposes: 1) Accepts socket connections from clients joining
  * application so that information can be sent back and forth. 2) Connects by sockets to all other
@@ -36,6 +38,7 @@ import javax.swing.*;
 public class LookUpServer {
 
   public int myServerID;
+  public ProgLogger logger;
   public ServerSocket serverSocket;
   public ConcurrentHashMap<String,String> usernamePasswordStore;
   public ConcurrentHashMap<String,Integer> usernamePortStore;
@@ -87,7 +90,9 @@ public class LookUpServer {
   public LookUpServer(int port, int serverID, String registryAddress, int registryPort, String myPaxosRole) {
     try {
       this.myServerID = serverID;
+      this.logger = new ProgLogger("lookUpServer_" + serverID + "_log.txt");
       this.serverSocket = new ServerSocket(port);
+      logger.logger.info("Created server socket for clients to connect to");
       this.loggedInUsersAndPasswords = new ConcurrentHashMap<>();
       this.usernamePasswordStore = new ConcurrentHashMap<>();
       this.usernamePasswordStore.put("admin", "password");
@@ -101,7 +106,7 @@ public class LookUpServer {
       createServerSocketForOtherPaxosServersToConnectTo();
       registerWithRegisterServer(registryAddress, registryPort);
     } catch (IOException e) {
-      e.printStackTrace();
+      System.out.println("Failed to properly set up LookUp server, including logger");
     }
   }
 
@@ -115,10 +120,12 @@ public class LookUpServer {
       this.serverSocketForOtherPaxosServersToConnectTo = new ServerSocket(0);
       this.portForOtherPaxosServersToConnectTo = this.serverSocketForOtherPaxosServersToConnectTo.getLocalPort();
       this.addressForOtherPaxosServersToConnectTo = this.serverSocketForOtherPaxosServersToConnectTo.getInetAddress().getHostAddress();
+      logger.logger.info("Created server socket at port "
+              + portForOtherPaxosServersToConnectTo + " for other LookUp servers to connect to");
       NewPaxosServerConnector newPaxosServerConnector = new NewPaxosServerConnector();
       new Thread(newPaxosServerConnector).start();
     } catch (IOException e) {
-      e.printStackTrace();
+      logger.logger.warning("Could not connect server socket for other LookUp servers to connect to");
     }
   }
 
@@ -133,10 +140,11 @@ public class LookUpServer {
       while (true) {
         try {
           Socket newPaxosServerSocket = serverSocketForOtherPaxosServersToConnectTo.accept();
+          logger.logger.info("Accepted socket connection from other LookUp server");
           PaxosSocketMessageReceiver paxosSocketMessageReceiver = new PaxosSocketMessageReceiver(newPaxosServerSocket, null, null);
           new Thread(paxosSocketMessageReceiver).start();
         } catch (IOException e) {
-          e.printStackTrace();
+          logger.logger.warning("Could no accept socket connection from other LookUp server");
         }
       }
     }
@@ -147,6 +155,7 @@ public class LookUpServer {
    * approved method by professor in piazza for how to prepare a new round of paxos.
    */
   public void prepareForNextPaxosRound() {
+    logger.logger.info("Resetting variables for next Paxos round");
     this.maxPromisedProposalNumber = -1;
     this.maxAcceptedProposalNumber = -1;
     this.maxAcceptedProposalTransaction = null;
@@ -217,7 +226,7 @@ public class LookUpServer {
       String hostname = cleanString(transactionInfo[3]);
       address = InetAddress.getByName(hostname);
     } catch (UnknownHostException e) {
-      e.printStackTrace();
+      logger.logger.warning("Could not get InetAddress from hostname");
     }
     ChatroomInfo newChatroomInfo = new ChatroomInfo();
     int newID = nextChatroomID;
@@ -339,6 +348,7 @@ public class LookUpServer {
       if (maxPromisedProposalNumber >= proposalNum) {
         // deny the prepare request by not replying
       } else {
+        logger.logger.info("Promising for proposal number " + proposalNum);
         maxPromisedProposalNumber = proposalNum;
         String promise = "promise@#@" + proposalNum + "@#@" + maxAcceptedProposalNumber + "@#@" + maxAcceptedProposalTransaction;
         try {
@@ -346,7 +356,7 @@ public class LookUpServer {
           writerToAnotherPaxosLookUpServer.newLine();
           writerToAnotherPaxosLookUpServer.flush();
         } catch (IOException e) {
-          e.printStackTrace();
+          logger.logger.warning("Could not notify proposer of promise");
         }
       }
     }
@@ -369,6 +379,7 @@ public class LookUpServer {
       numPromisedAcceptors++;
       if (acceptorLookUpServersReadersWriters.size() / 2 <= numPromisedAcceptors && !reachedMajorityPromises) {
         reachedMajorityPromises = true;
+        logger.logger.info("Majority of promises reached so requesting acceptors to accept");
         for (Map.Entry acceptor : acceptorLookUpServersReadersWriters.entrySet()) {
           BufferedWriter acceptorWriter = (BufferedWriter) acceptor.getValue();
           try {
@@ -376,7 +387,7 @@ public class LookUpServer {
             acceptorWriter.newLine();
             acceptorWriter.flush();
           } catch (IOException e) {
-            e.printStackTrace();
+            logger.logger.warning("Could not request acceptance from acceptor");
           }
         }
       }
@@ -396,12 +407,13 @@ public class LookUpServer {
         maxAcceptedProposalNumber = proposalNum;
         maxAcceptedProposalTransaction = givenTransaction;
         maxPromisedProposalNumber = proposalNum;
+        logger.logger.info("Accepting proposal number " + proposalNum);
         try {
           this.writerToAnotherPaxosLookUpServer.write("acceptResponse@#@" + proposalNum + "@#@" + givenTransaction);
           this.writerToAnotherPaxosLookUpServer.newLine();
           this.writerToAnotherPaxosLookUpServer.flush();
         } catch (IOException e) {
-          e.printStackTrace();
+          logger.logger.warning("Could not notify proposer of acceptance");
         }
       }
     }
@@ -418,6 +430,7 @@ public class LookUpServer {
       numAcceptedAcceptors++;
       if (acceptorLookUpServersReadersWriters.size() / 2 <= numAcceptedAcceptors && !reachedMajorityAcceptances) {
         reachedMajorityAcceptances = true;
+        logger.logger.info("Majority of acceptances reached so notifying learners");
         // motify all acceptors of what transaction they should carry out,
         for (Map.Entry acceptor : acceptorLookUpServersReadersWriters.entrySet()) {
           BufferedWriter acceptorWriter = (BufferedWriter) acceptor.getValue();
@@ -426,7 +439,7 @@ public class LookUpServer {
             acceptorWriter.newLine();
             acceptorWriter.flush();
           } catch (IOException e) {
-            e.printStackTrace();
+            logger.logger.warning("Could not notify acceptors of transaction");
           }
         }
         // notify all proposers of what transaction they should carry out.
@@ -437,7 +450,7 @@ public class LookUpServer {
             proposerWriter.newLine();
             proposerWriter.flush();
           } catch (IOException e) {
-            e.printStackTrace();
+            logger.logger.warning("Could not notify proposers of transaction");
           }
         }
         // notify all learners of what transaction they should carry out.
@@ -448,7 +461,7 @@ public class LookUpServer {
             learnerWriter.newLine();
             learnerWriter.flush();
           } catch (IOException e) {
-            e.printStackTrace();
+            logger.logger.warning("Could not notify learners of transaction");
           }
         }
         prepareForNextPaxosRound();
@@ -466,6 +479,7 @@ public class LookUpServer {
       String[] transactionInfo = transaction.split("&%%");
       if (transactionInfo != null && transactionInfo.length > 1) {
         String transactionType = transactionInfo[0];
+        logger.logger.info("Received education request for " + transactionType);
         prepareForNextPaxosRound();
         // given the type of transaction, have the appropriate handler take care of it.
         if (transactionType.equalsIgnoreCase("login")) {
@@ -510,7 +524,6 @@ public class LookUpServer {
         while (true) {
           String line = this.readerToAnotherPaxosLookUpServer.readLine();
           if (line == null) {
-            System.out.println("A CONNECTION DROPPED BETWEEN LOOKUP SERVERS");
             break;
           }
           String[] messageArray = line.split("@#@");
@@ -520,6 +533,7 @@ public class LookUpServer {
           // if the other LookUp server tells this server their role, then keep track of it appropriately.
           if (messageArray[0].equalsIgnoreCase("tellMyRole")) {
             String otherServerPaxosRole = messageArray[1];
+            logger.logger.info("Received tellMyRole notification from " + otherServerPaxosRole);
             if (otherServerPaxosRole.equalsIgnoreCase("acceptor")) {
               acceptorLookUpServersReadersWriters.put(readerToAnotherPaxosLookUpServer, writerToAnotherPaxosLookUpServer);
             } else if (otherServerPaxosRole.equalsIgnoreCase("proposer")) {
@@ -538,11 +552,11 @@ public class LookUpServer {
           } else if (messageArray[0].equalsIgnoreCase("educate")) {
             handleEducate(messageArray);
           } else {
-            System.out.println("A message of unknown type " + line + " was received.");
+            logger.logger.warning("A message of unknown type " + line + " was received.");
           }
         }
       } catch (IOException e) {
-        e.printStackTrace();
+        logger.logger.warning("Socket for other LookUp server could not connect/receive messages");
       }
     }
   }
@@ -558,7 +572,7 @@ public class LookUpServer {
       RegistryServerListener registryServerListener = new RegistryServerListener(socket);
       new Thread(registryServerListener).start();
     } catch (IOException e) {
-      e.printStackTrace();
+      logger.logger.warning("Could not connect socket to registry server");
     }
   }
 
@@ -606,7 +620,7 @@ public class LookUpServer {
         this.registryWriter.newLine();
         this.registryWriter.flush();
       } catch (IOException e) {
-        e.printStackTrace();
+        logger.logger.warning("Could not contact registry server");
       }
       // continuously listen for messages from the registry server to connect a socket to a new LookUp server.
       while (true) {
@@ -619,13 +633,14 @@ public class LookUpServer {
             int newServerPort = Integer.parseInt(messageArray[2]);
             String paxosRole = messageArray[3];
             Socket newServerSocket = new Socket(newServerAddress, newServerPort);
+            logger.logger.info("Connected socket to LookUp server on port " + newServerPort);
             // Start a new thread to handle communication with new LookUp server.
             InstigateSocketConnectionToOtherPaxosServer instigateSocketConnectionToOtherPaxosServer
                     = new InstigateSocketConnectionToOtherPaxosServer(newServerSocket, paxosRole);
             new Thread(instigateSocketConnectionToOtherPaxosServer).start();
           }
         } catch (IOException e) {
-          e.printStackTrace();
+          logger.logger.warning("Could not receive message fro registry server");
         }
       }
     }
@@ -667,7 +682,8 @@ public class LookUpServer {
           learnerLookUpServersReadersWriters.put(this.readerForOtherPaxosServerSocket, this.writerForOtherPaxosServerSocket);
         }
       } catch (IOException e) {
-        e.printStackTrace();
+        logger.logger.warning("Could not create buffered reader and writer for "
+                + paxosRole + " Lookup server");
       }
     }
 
@@ -686,7 +702,7 @@ public class LookUpServer {
                 this.readerForOtherPaxosServerSocket, this.writerForOtherPaxosServerSocket);
         new Thread(paxosSocketMessageReceiver).start();
       } catch (IOException e) {
-        e.printStackTrace();
+        logger.logger.warning("Could not notify other LookUp server of my paxos role");
       }
     }
   }
@@ -702,10 +718,11 @@ public class LookUpServer {
         Socket clientSocket = null;
         try {
           clientSocket = serverSocket.accept();
+          logger.logger.info("Accepted client socket connection");
           ClientSocketHandler clientSocketHandler = new ClientSocketHandler(clientSocket);
           new Thread(clientSocketHandler).start();
         } catch (IOException e) {
-          e.printStackTrace();
+          logger.logger.warning("Could not accept client socket connection");
         }
       }
     }
@@ -748,6 +765,7 @@ public class LookUpServer {
       // get a proposal number based on the current time.
       long proposalNum = new Date().getTime();
       largestPromiseTransaction = transactionInfo;
+      logger.logger.info("Starting paxos round for proposal number " + proposalNum);
       // Prepare acceptors by asking to reply with promise.
       for (Map.Entry acceptor : acceptorLookUpServersReadersWriters.entrySet()) {
         try {
@@ -756,7 +774,7 @@ public class LookUpServer {
           acceptorWriter.newLine();
           acceptorWriter.flush();
         } catch (IOException ie) {
-          ie.printStackTrace();
+          logger.logger.warning("Could not send prepare request for proposal number " + proposalNum);
         }
       }
     }
@@ -779,10 +797,13 @@ public class LookUpServer {
         loggedInUsersAndPasswords.put(username, password);
         this.clientUsername = username;
         usernameToSocketWriters.put(username, this.clientWriter);
+        logger.logger.info("Successfully logged in user " + username);
         return "success";
       } else if (usernamePasswordStore.get(username) == null || !usernamePasswordStore.get(username).equalsIgnoreCase(password)){
+        logger.logger.info("Login username/password incorrect");
         return "incorrect";
       } else {
+        logger.logger.info("Login request for " + username + " who is already logged in");
         return "alreadyLoggedIn";
       }
     }
@@ -798,6 +819,7 @@ public class LookUpServer {
       String username = accountInfo[1];
       String password = accountInfo[2];
       if (usernamePasswordStore.containsKey(username)) {
+        logger.logger.info("Register request for existing username " + username);
         return "exists";
       } else {
         // start paxos so other servers are updated
@@ -806,6 +828,7 @@ public class LookUpServer {
         usernameToSocketWriters.put(username, this.clientWriter);
         usernamePasswordStore.put(username, password);
         loggedInUsersAndPasswords.put(username, password);
+        logger.logger.info("Registered user " + username);
         return "success";
       }
     }
@@ -820,6 +843,7 @@ public class LookUpServer {
       String username = accountInfo[1];
       startPaxos("logout&%%" + username);
       loggedInUsersAndPasswords.remove(username);
+      logger.logger.info("Logged out user " + username + " who was on chat selection screen");
       return "success";
     }
 
@@ -837,10 +861,10 @@ public class LookUpServer {
       String username = chatRequest[2];
       this.clientUsername = username;
       if (!chatNameChatroomInfoStore.containsKey(chatName)) {
+        logger.logger.warning("Chatroom name non-existent and cannot be recreated");
         return "non-existent";
       } else {
         // start paxos so other servers are updated
-        // TODO - need to get proper ports and addresses etc to other lookupservers.
         startPaxos("reCreateChat&%%" + chatName + "&%%" + username + "&%%" + this.clientAddress.getHostAddress());
         // set appropriate host-related data in chatroomInfo
         ChatroomInfo updatingChatroomInfo = chatNameChatroomInfoStore.get(chatName);
@@ -859,9 +883,9 @@ public class LookUpServer {
           heartbeatPort = heartbeatServerSocket.getLocalPort();
           new Thread(new ChatroomHeartbeat(heartbeatServerSocket)).start();
         } catch (IOException e) {
-          e.printStackTrace();
+          logger.logger.warning("Could not create server socket for recreated chatroom server to connect to");
         }
-        System.out.println("Recreated chatroom with name " + chatName + " hosted by " + username);
+        logger.logger.info("Recreated chatroom with name " + chatName + " hosted by " + username);
         return "success@#@" + reUsedID + "@#@" + reUsedGroupIP + "@#@" + heartbeatAddress + "@#@" + heartbeatPort;
       }
     }
@@ -881,6 +905,7 @@ public class LookUpServer {
       this.clientUsername = username;
       // if chatroom by that name already exists, then notify client
       if (chatNameChatroomInfoStore.containsKey(chatName)) {
+        logger.logger.info("Request to create chatroom with an existing name " + chatName);
         return "exists";
       } else {
         // start paxos so other servers are updated
@@ -909,9 +934,9 @@ public class LookUpServer {
           heartbeatPort = heartbeatServerSocket.getLocalPort();
           new Thread(new ChatroomHeartbeat(heartbeatServerSocket)).start();
         } catch (IOException e) {
-          e.printStackTrace();
+          logger.logger.warning("Could not create server socket for recreated chatroom server to connect to");
         }
-        System.out.println("Created chatroom with name " + chatName + " hosted by " + username);
+        logger.logger.info("Created chatroom with name " + chatName + " hosted by " + username);
         return "success@#@" + newID + "@#@" + groupIPPrefix + newGroupIPIndex+ "@#@" + heartbeatAddress + "@#@" + heartbeatPort;
       }
     }
@@ -952,7 +977,7 @@ public class LookUpServer {
           heartbeatReader = new BufferedReader(new InputStreamReader(heartbeatSocket.getInputStream()));
           new Thread(new ChatroomListener(heartbeatWriter,heartbeatReader)).start();
         } catch (IOException e) {
-          e.printStackTrace();
+          logger.logger.warning("Could not accept socket connection from chatroom server");
         }
         // create an action listener that sends heartbeats to the chatroom server to check if it is
         // alive. This listener is called by a repeating timer.
@@ -967,7 +992,7 @@ public class LookUpServer {
             // stop heartbeat timer
             this.heartbeatTimer.stop();
             loggedInUsersAndPasswords.remove(clientUsername);
-            System.out.println("Host has left");
+            logger.logger.info("Host " + clientUsername + " has left");
             // need to force a client to make a new chatroom server. Maybe have hashmap of client
             // usernames to readers/writers.
             ChatroomInfo chatroomInfo = hostUsernameToChatroomInfos.get(clientUsername);
@@ -978,6 +1003,7 @@ public class LookUpServer {
               // exited, so we do not need to reboot the chatroom.
               hostUsernameToChatroomInfos.remove(clientUsername);
               chatNameChatroomInfoStore.remove(chatroomInfo.name);
+              logger.logger.info("Chatroom " + chatroomInfo.name + " deleted since host was last member");
             } else {
               // LookUpServer multicasts to members with message that includes the name of the new
               // host and the name of the chatroom they should create. The member that is named in the
@@ -990,10 +1016,8 @@ public class LookUpServer {
                 DatagramPacket packet = new DatagramPacket(buffer, buffer.length, InetAddress.getByName(groupAddress), 4446);
                 datagramSocket.send(packet);
                 datagramSocket.close();
-              } catch (SocketException se) {
-                se.printStackTrace();
-              } catch (IOException ie) {
-                ie.printStackTrace();
+              } catch (IOException se) {
+                logger.logger.warning("Could not multicast notification of new host " + newHost);
               }
             }
           }
@@ -1002,6 +1026,7 @@ public class LookUpServer {
         this.heartbeatTimer = new Timer(500, listener);
         this.heartbeatTimer.setRepeats(true);
         this.heartbeatTimer.start();
+        logger.logger.info("Started heartbeat timer for chatroom");
         hostUsernameToHearbeatTimer.put(clientUsername, this.heartbeatTimer);
         // keep heartbeat timer alive
         while (true) {}
@@ -1036,6 +1061,7 @@ public class LookUpServer {
         String senderUsername = messageArray[1];
         String messageSent = messageArray[2];
         ChatroomInfo chatroomInfo = hostUsernameToChatroomInfos.get(clientUsername);
+        logger.logger.info("In chatroom " + chatroomInfo.name + " user " + senderUsername + " sent message: " + messageSent);
         String transaction = "messageSent&%%" + messageArray[1] + "&%%" + messageArray[2] + "&%%" + chatroomInfo.name;
         startPaxos(transaction);
         chatroomInfo.putMessage(senderUsername, messageSent);
@@ -1050,6 +1076,7 @@ public class LookUpServer {
         String leaverUsername = messageArray[1];
         ChatroomInfo chatroomInfo = hostUsernameToChatroomInfos.get(clientUsername);
         String transaction = "chatroomLogout&%%" + messageArray[1] + "&%%" + chatroomInfo.name;
+        logger.logger.info("User " + leaverUsername + " logged out while in " + chatroomInfo.name);
         startPaxos(transaction);
         chatroomInfo.removeMember(leaverUsername);
         loggedInUsersAndPasswords.remove(leaverUsername);
@@ -1069,8 +1096,8 @@ public class LookUpServer {
         hostUsernameToHearbeatTimer.get(clientUsername).stop();
         hostUsernameToHearbeatTimer.remove(clientUsername);
         loggedInUsersAndPasswords.remove(clientUsername);
-        System.out.println("Host has left");
         ChatroomInfo chatroomInfo = hostUsernameToChatroomInfos.get(clientUsername);
+        logger.logger.info("Host " + clientUsername + " has logged out while in chatroom " + chatroomInfo.name);
         // remove the host user from list of members in chatroomInfo and tell chatroom server to
         // remove its GUI
         chatroomInfo.removeMember(clientUsername);
@@ -1089,15 +1116,14 @@ public class LookUpServer {
             DatagramPacket packet = new DatagramPacket(buffer, buffer.length, InetAddress.getByName(groupAddress), 4446);
             datagramSocket.send(packet);
             datagramSocket.close();
-          } catch (SocketException se) {
-            se.printStackTrace();
-          } catch (IOException ie) {
-            ie.printStackTrace();
+          } catch (IOException se) {
+            logger.logger.warning("Could not send multicast to notify members of new host " + newHost);
           }
         } else {
           // this is the case that no one is left in the chatroom.
           hostUsernameToChatroomInfos.remove(clientUsername);
           chatNameChatroomInfoStore.remove(chatroomInfo.name);
+          logger.logger.info("No one left in chatroom " + chatroomInfo.name);
         }
       }
 
@@ -1112,6 +1138,7 @@ public class LookUpServer {
         String transaction = "backToChatSelection&%%" + messageArray[1] + "&%%" + chatroomInfo.name;
         startPaxos(transaction);
         chatroomInfo.removeMember(leaverUsername);
+        logger.logger.info("User " + leaverUsername + " went back to chat selection screen");
       }
 
       /**
@@ -1127,10 +1154,11 @@ public class LookUpServer {
         // stop the heartbeat timer since chatroom server is leaving.
         hostUsernameToHearbeatTimer.get(clientUsername).stop();
         hostUsernameToHearbeatTimer.remove(clientUsername);
-        System.out.println("Host has left");
         // remove the host user from list of members in chatroomInfo and tell chatroom server to
         // remove its GUI
         ChatroomInfo chatroomInfo = hostUsernameToChatroomInfos.get(clientUsername);
+        logger.logger.info("Host " + clientUsername + " has gone back to chat selection screen" +
+                " while in chatroom " + chatroomInfo.name);
         chatroomInfo.removeMember(clientUsername);
         this.chatroomWriter.write("removeGUI");
         this.chatroomWriter.newLine();
@@ -1146,15 +1174,14 @@ public class LookUpServer {
             DatagramPacket packet = new DatagramPacket(buffer, buffer.length, InetAddress.getByName(groupAddress), 4446);
             datagramSocket.send(packet);
             datagramSocket.close();
-          } catch (SocketException se) {
-            se.printStackTrace();
-          } catch (IOException ie) {
-            ie.printStackTrace();
+          } catch (IOException se) {
+            logger.logger.warning("Could not send multicast to notify members of new host " + newHost);
           }
         } else {
           // this is the case that no one is left in the chatroom.
           hostUsernameToChatroomInfos.remove(clientUsername);
           chatNameChatroomInfoStore.remove(chatroomInfo.name);
+          logger.logger.info("No one left in chatroom " + chatroomInfo.name);
         }
       }
 
@@ -1185,7 +1212,7 @@ public class LookUpServer {
             }
           } catch (IOException e) {
             isAlive = false;
-            System.out.println("Disconnected from socket since chatroom server host left");
+            logger.logger.info("Disconnected from socket since chatroom server host left");
           }
         }
       }
@@ -1203,6 +1230,7 @@ public class LookUpServer {
       startPaxos("updateChatConnectionPort&%%" + newPort + "&%%" + chatroomName);
       ChatroomInfo chatroomInfo = chatNameChatroomInfoStore.get(chatroomName);
       chatroomInfo.setPort(newPort);
+      logger.logger.info("Updated chatroom server socket port to " + newPort + " for " + chatroomName);
       return "success";
     }
 
@@ -1228,10 +1256,10 @@ public class LookUpServer {
         DatagramPacket packet = new DatagramPacket(buffer, buffer.length, InetAddress.getByName(groupAddress), 4446);
         datagramSocket.send(packet);
         datagramSocket.close();
-      } catch (SocketException se) {
-        se.printStackTrace();
-      } catch (IOException ie) {
-        ie.printStackTrace();
+        logger.logger.info("Notified members of recreation of chatroom " + chatroomInfo.name
+                + " with new host " + newHost);
+      } catch (IOException se) {
+        logger.logger.warning("Could not multicast notification of recreation of chatroom");
       }
       return "success";
     }
@@ -1245,7 +1273,7 @@ public class LookUpServer {
       String givenChatname = messageInfo[1];
       ChatroomInfo chatroomInfo = chatNameChatroomInfoStore.get(givenChatname);
       String allSentMessages = chatroomInfo.getAllMessages();
-      System.out.println("allSentMessages: " + allSentMessages);
+      logger.logger.info("Got history of all messages for chatroom " + givenChatname);
       return allSentMessages;
     }
 
@@ -1269,8 +1297,10 @@ public class LookUpServer {
         int port = chatroomInfo.port;
         String groupIP = chatroomInfo.groupIP;
         chatroomInfo.putMember(username);
+        logger.logger.info("User " + username + " joined chatroom " + chatName);
         return "success@#@" + address + "@#@" + port + "@#@" + groupIP;
       } else {
+        logger.logger.info("Chatroom " + chatName + " was attempted to join but does not exist");
         return "nonexistent";
       }
     }
@@ -1290,8 +1320,10 @@ public class LookUpServer {
         for (String member : members) {
           membersString.append("@#@").append(member);
         }
+        logger.logger.info("Handled request to get users in chat " + chatName);
         return membersString.toString();
       } else {
+        logger.logger.info("Request to get users in nonexistent chat " + chatName);
         return "nonexistent";
       }
     }
@@ -1307,6 +1339,7 @@ public class LookUpServer {
         ChatroomInfo info = (ChatroomInfo) nameInfoPair.getValue();
         response.append(name).append("%&%").append(info.members.size()).append("@&@");
       }
+      logger.logger.info("Handled request to get number of users in all chatrooms");
       return response.toString();
     }
 
@@ -1318,18 +1351,18 @@ public class LookUpServer {
       // TODO - probably startPaxos for this.
       if (clientUsername != null && !hostUsernameToChatroomInfos.containsKey(clientUsername)) {
         // If logged in, log them out.
-        System.out.println("THE NON-HOST CLIENT WAS KILLED");
         loggedInUsersAndPasswords.remove(clientUsername);
         // If part of a room, remove them from the room.
         for (Map.Entry chatNameChatroomInfo : chatNameChatroomInfoStore.entrySet()) {
           ChatroomInfo chatroomInfo = (ChatroomInfo) chatNameChatroomInfo.getValue();
           chatroomInfo.removeMember(clientUsername);
         }
+        logger.logger.info("Logged out user " + clientUsername);
       }
       try {
         this.clientSocket.close();
       } catch (IOException e) {
-        System.out.println("Previous socket closing successful.");
+        logger.logger.info("Socket closed previously successfully.");
       }
     }
 
@@ -1349,7 +1382,7 @@ public class LookUpServer {
         this.clientReader = reader;
         this.clientWriter = writer;
       } catch (IOException e) {
-        e.printStackTrace();
+        logger.logger.warning("Could not create buffered writer and reader for client socket");
       }
       while (true) {
         try {
@@ -1391,7 +1424,6 @@ public class LookUpServer {
           writer.newLine();
           writer.flush();
         } catch (IOException e) {
-          e.printStackTrace();
           logOutUser();
           break;
         }

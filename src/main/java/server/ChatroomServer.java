@@ -86,7 +86,6 @@ public class ChatroomServer {
     // connect to LookUp server to receive heartbeats and send any chatroom information
     try {
       this.heartbeatSocket = new Socket(heartbeatAddress, heartbeatPort);
-      System.out.println("Connected to lookup for heartbeat");
       HeartbeatHandler heartbeatHandler = new HeartbeatHandler(this.heartbeatSocket);
       new Thread(heartbeatHandler).start();
     } catch (IOException e) {
@@ -230,7 +229,6 @@ public class ChatroomServer {
       String message = sender + "@#@" + actualMessage;
       multicastMessage(message);
       try {
-        System.out.println("In handleMessage sending: " + sender + ": " + actualMessage);
         heartbeatWriter.write("messageSent@#@" + sender + "@#@" + actualMessage);
         heartbeatWriter.newLine();
         heartbeatWriter.flush();
@@ -252,7 +250,6 @@ public class ChatroomServer {
       if (leaverUsername.equalsIgnoreCase(hostClient.username)) {
         // case that the leaving user is the host client
         try {
-          System.out.println("In handleChatroomLogout for myself the host " + leaverUsername);
           heartbeatWriter.write("hostChatroomLogout" + "@#@" + leaverUsername);
           heartbeatWriter.newLine();
           heartbeatWriter.flush();
@@ -263,7 +260,6 @@ public class ChatroomServer {
       } else {
         // case that the leaving user is not the host client
         try {
-          System.out.println("In handleChatroomLogout sending: " + leaverUsername);
           heartbeatWriter.write("chatroomLogout@#@" + leaverUsername);
           heartbeatWriter.newLine();
           heartbeatWriter.flush();
@@ -286,7 +282,6 @@ public class ChatroomServer {
       if (leaverUsername.equalsIgnoreCase(hostClient.username)) {
         // case that the leaving user is the host client
         try {
-          System.out.println("In handleBackToChatSelection sending: " + leaverUsername);
           heartbeatWriter.write("hostBackToChatSelection@#@" + leaverUsername);
           heartbeatWriter.newLine();
           heartbeatWriter.flush();
@@ -297,7 +292,6 @@ public class ChatroomServer {
       } else {
         // case that the leaving user is not the host client
         try {
-          System.out.println("In handleBackToChatSelection sending: " + leaverUsername);
           heartbeatWriter.write("backToChatSelection@#@" + leaverUsername);
           heartbeatWriter.newLine();
           heartbeatWriter.flush();
