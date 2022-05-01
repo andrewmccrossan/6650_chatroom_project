@@ -184,6 +184,10 @@ public class LookUpServer {
   public void doLogoutTransaction(String[] transactionInfo) {
     String username = cleanString(transactionInfo[1]);
     loggedInUsersAndPasswords.remove(username);
+    for (Map.Entry chatNameChatroomInfo : chatNameChatroomInfoStore.entrySet()) {
+      ChatroomInfo chatroomInfo = (ChatroomInfo) chatNameChatroomInfo.getValue();
+      chatroomInfo.removeMember(username);
+    }
   }
 
   /**
@@ -305,6 +309,54 @@ public class LookUpServer {
     String chatName = cleanString(transactionInfo[2]);
     ChatroomInfo chatroomInfo = chatNameChatroomInfoStore.get(chatName);
     chatroomInfo.removeMember(leaverUsername);
+  }
+
+  /**
+   * Carry out a recreate chatroom transaction by updating the host user and adding the host user and
+   * updated chatroomInfo to collection of pairings.
+   * @param transactionInfo
+   */
+  public void doRecreateChatTransaction(String[] transactionInfo) {
+    String chatName = cleanString(transactionInfo[1]);
+    String hostUser = cleanString(transactionInfo[2]);
+    String newHostAddress = cleanString(transactionInfo[3]);
+    ChatroomInfo updatingChatroomInfo = chatNameChatroomInfoStore.get(chatName);
+    if (updatingChatroomInfo != null) {
+      updatingChatroomInfo.setHostUsername(hostUser);
+      try {
+        updatingChatroomInfo.setInetAddress(InetAddress.getByName(newHostAddress));
+      } catch (UnknownHostException e) {
+        logger.logger.warning("Host address was unrecognized");
+      }
+      hostUsernameToChatroomInfos.put(hostUser, updatingChatroomInfo);
+    }
+  }
+
+  /**
+   * Carry out chatroom server host chatroom logout transaction by logging out host and removing
+   * them from members collection in chatroomInfo.
+   * @param transactionInfo
+   */
+  public void doChatroomServerHostChatroomLogoutTransaction(String[] transactionInfo) {
+    String oldHostUser = cleanString(transactionInfo[1]);
+    loggedInUsersAndPasswords.remove(oldHostUser);
+    ChatroomInfo chatroomInfo = hostUsernameToChatroomInfos.get(oldHostUser);
+    if (chatroomInfo != null) {
+      chatroomInfo.removeMember(oldHostUser);
+    }
+  }
+
+  /**
+   * Carry out a transaction for chatroom server host going back to the chat selection screen by
+   * removing the host from members collection in chatroomInfo.
+   * @param transactionInfo
+   */
+  public void doChatroomServerHostBackToChatSelectionTransaction(String[] transactionInfo) {
+    String oldHostUser = cleanString(transactionInfo[1]);
+    ChatroomInfo chatroomInfo = hostUsernameToChatroomInfos.get(oldHostUser);
+    if (chatroomInfo != null) {
+      chatroomInfo.removeMember(oldHostUser);
+    }
   }
 
   /**
@@ -500,6 +552,12 @@ public class LookUpServer {
           doChatroomLogoutTransaction(transactionInfo);
         } else if (transactionType.equalsIgnoreCase("backToChatSelection")) {
           doBackToChatSelectionTransaction(transactionInfo);
+        } else if (transactionType.equalsIgnoreCase("reCreateChat")) {
+          doRecreateChatTransaction(transactionInfo);
+        } else if (transactionType.equalsIgnoreCase("chatroomServerHostChatroomLogout")) {
+          doChatroomServerHostChatroomLogoutTransaction(transactionInfo);
+        } else if (transactionType.equalsIgnoreCase("chatroomServerHostBackToChatSelection")) {
+          doChatroomServerHostBackToChatSelectionTransaction(transactionInfo);
         }
       }
     }
@@ -1097,6 +1155,7 @@ public class LookUpServer {
         hostUsernameToHearbeatTimer.remove(clientUsername);
         loggedInUsersAndPasswords.remove(clientUsername);
         ChatroomInfo chatroomInfo = hostUsernameToChatroomInfos.get(clientUsername);
+        startPaxos("chatroomServerHostChatroomLogout&%%" + clientUsername);
         logger.logger.info("Host " + clientUsername + " has logged out while in chatroom " + chatroomInfo.name);
         // remove the host user from list of members in chatroomInfo and tell chatroom server to
         // remove its GUI
@@ -1154,6 +1213,7 @@ public class LookUpServer {
         // stop the heartbeat timer since chatroom server is leaving.
         hostUsernameToHearbeatTimer.get(clientUsername).stop();
         hostUsernameToHearbeatTimer.remove(clientUsername);
+        startPaxos("chatroomServerHostBackToChatSelection&%%" + clientUsername);
         // remove the host user from list of members in chatroomInfo and tell chatroom server to
         // remove its GUI
         ChatroomInfo chatroomInfo = hostUsernameToChatroomInfos.get(clientUsername);
@@ -1348,9 +1408,9 @@ public class LookUpServer {
      * in. Finally, close their socket.
      */
     private void logOutUser() {
-      // TODO - probably startPaxos for this.
       if (clientUsername != null && !hostUsernameToChatroomInfos.containsKey(clientUsername)) {
         // If logged in, log them out.
+        startPaxos("logout&%%" + clientUsername);
         loggedInUsersAndPasswords.remove(clientUsername);
         // If part of a room, remove them from the room.
         for (Map.Entry chatNameChatroomInfo : chatNameChatroomInfoStore.entrySet()) {
