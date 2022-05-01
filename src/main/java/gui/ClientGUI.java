@@ -4,11 +4,11 @@ import java.awt.*;
 import java.awt.event.ActionEvent;
 import java.awt.event.ActionListener;
 import java.util.ArrayList;
-import java.util.concurrent.TimeUnit;
 
 import javax.swing.*;
 
 import client.Client;
+import logger.ProgLogger;
 
 /**
  * Class to handle all of the visual aspects of the client's application. A GUI is created and
@@ -18,6 +18,7 @@ public class ClientGUI {
 
   // Vars for construction / login / register
   public Client client;
+  public ProgLogger clientLogger;
   public JFrame frame;
   public JPanel panel;
   public ArrayList<Component> componentsOnPanel;
@@ -73,7 +74,8 @@ public class ClientGUI {
    * is in the ChatroomServerGUI.
    * @param client
    */
-  public ClientGUI(Client client) {
+  public ClientGUI(Client client, ProgLogger logger) {
+    this.clientLogger = logger;
     this.client = client;
     this.frame = new JFrame();
     this.panel = new JPanel();
@@ -95,21 +97,27 @@ public class ClientGUI {
       // send login username and password
       if (loginUsername.getText().length() == 0 || loginPassword.getText().length() == 0) {
         openToastLabel("Provide username and password!");
+        clientLogger.logger.info("Username or password in login was empty when login button clicked.");
       } else if (loginUsername.getText().contains("@#@") || loginUsername.getText().contains("%&%")
               || loginPassword.getText().contains("@#@") || loginPassword.getText().contains("%&%")) {
         // These are special reserved sequences since all communication is through sockets and
         // delineators between content must be kept unique.
         openToastLabel("Do not use special reserved sequences '@#@' or '%&%'!");
+        clientLogger.logger.info("Special reserved sequence attempted to be used in login textbox");
       } else {
         String response = client.attemptLogin(loginUsername.getText(), loginPassword.getText());
         // change GUI to open chat selection screen
         if (response.equalsIgnoreCase("success")) {
+          clientLogger.logger.info("Successfully logged in as " + loginUsername.getText());
           myUsername = loginUsername.getText();
           openChatSelectionScreen();
         } else if (response.equalsIgnoreCase("incorrect")) {
           openToastLabel("Incorrect username/password!");
+          clientLogger.logger.info("Incorrect username/password given: " + loginUsername.getText());
         } else {
           openToastLabel("This user already logged in!");
+          clientLogger.logger.info("User with username " + loginUsername.getText()
+                  + " is already logged in");
         }
       }
     }
@@ -127,18 +135,22 @@ public class ClientGUI {
       // send register username and password
       if (registerUsername.getText().length() == 0 || registerPassword.getText().length() == 0) {
         openToastLabel("Provide username and password!");
+        clientLogger.logger.info("Username or password in register was empty when register button clicked.");
       } else if (registerUsername.getText().contains("@#@") || registerUsername.getText().contains("%&%")
               || registerPassword.getText().contains("@#@") || registerPassword.getText().contains("%&%")) {
         // These are special reserved sequences since all communication is through sockets and
         // delineators between content must be kept unique.
         openToastLabel("Do not use special reserved sequences '@#@' or '%&%'!");
+        clientLogger.logger.info("Special reserved sequence attempted to be used in register textbox");
       } else {
         String response = client.attemptRegister(registerUsername.getText(), registerPassword.getText());
         if (response.equalsIgnoreCase("success")) {
+          clientLogger.logger.info("Successfully registered with username " + registerUsername.getText());
           myUsername = registerUsername.getText();
           openChatSelectionScreen();
         } else {
           openToastLabel("Already existing username!");
+          clientLogger.logger.info("User with username " + registerUsername.getText() + " already exists");
         }
       }
     }
@@ -177,16 +189,21 @@ public class ClientGUI {
       chatroomName = joinChatField.getText();
       if (chatroomName.length() == 0) {
         openToastLabel("Provide a chatroom name!");
+        clientLogger.logger.info("Empty textbox for join chatroom attempted to submit");
       } else if (chatroomName.contains("@#@") || chatroomName.contains("%&%")) {
         // These are special reserved sequences since all communication is through sockets and
         // delineators between content must be kept unique.
         openToastLabel("Do not use special reserved sequences '@#@' or '%&%'!");
+        clientLogger.logger.info("Special reserved sequence attempted to be used in join chat textbox");
       } else {
         String response = client.attemptJoinChat(chatroomName);
         if (response.equalsIgnoreCase("success")) {
           openChatroomScreen();
+          clientLogger.logger.info("Successfully joined chatroom " + chatroomName);
         } else { // lookup server returns "nonexistent"
           openToastLabel("Chatroom name does not exist!");
+          clientLogger.logger.info("Nonexistent chatroom by name of "
+                  + chatroomName + " was attempted to join");
         }
       }
     }
@@ -204,62 +221,94 @@ public class ClientGUI {
       chatroomName = createChatField.getText();
       if (chatroomName.length() == 0) {
         openToastLabel("Provide a chatroom name!");
+        clientLogger.logger.info("Empty textbox for create chatroom attempted to submit");
       } else if (chatroomName.contains("@#@") || chatroomName.contains("%&%")) {
         // These are special reserved sequences since all communication is through sockets and
         // delineators between content must be kept unique.
         openToastLabel("Do not use special reserved sequences '@#@' or '%&%'!");
+        clientLogger.logger.info("Special reserved sequence attempted to be used in create chat textbox");
       } else {
         String response = client.attemptCreateChat(chatroomName);
         if (response.equalsIgnoreCase("success")) {
           openChatroomScreen();
+          clientLogger.logger.info("Successfully created chatroom " + chatroomName);
         } else { // when lookup server returns "exists"
           openToastLabel("A chatroom already has that name!");
+          clientLogger.logger.info("Existing chatroom by name of "
+                  + chatroomName + " was attempted to create");
         }
       }
     }
   }
 
+  /**
+   * Listener for Logout button in Chat selection screen. Notifies LookUp server that we have logged
+   * out. User is not in a chatroom at this screen so the server does not need to account for a member
+   * leaving a chatroom. Success causes the Login/Register screen to appear.
+   */
   public class ChatSelectionLogOutButtonListener implements ActionListener {
     @Override
     public void actionPerformed(ActionEvent e) {
       String response = client.attemptChatSelectionLogout();
       if (response.equalsIgnoreCase("success")) {
         openLoginRegisterScreen();
+        clientLogger.logger.info("Successfully logged out user " + myUsername);
       } else {
-        System.out.println("Could not log out user.");
+        clientLogger.logger.warning("Could not log out user " + myUsername);
       }
     }
   }
 
+  /**
+   * Listener for Logout button in chatroom. Notifies chatroom server that we have logged out. Chatroom
+   * server handles case based on if user logging out is the host client or just a normal client.
+   * Success causes the Login/Register screen to appear.
+   */
   public class ChatroomLogOutButtonListener implements ActionListener {
     @Override
     public void actionPerformed(ActionEvent e) {
       String response = client.attemptChatroomLogout();
       if (response.equalsIgnoreCase("success")) {
         openLoginRegisterScreen();
+        clientLogger.logger.info("Successfully logged out user " + myUsername);
       } else {
-        System.out.println("Could not log out user.");
+        clientLogger.logger.warning("Could not log out user " + myUsername);
       }
     }
   }
 
+  /**
+   * Listener for Send button in chatroom. This checks if the textbox has any contents to send. Also
+   * checks if textbox has reserved string sequences. Opens toast messages in case there is no message
+   * or a message with reserved sequences. If valid, the message is sent to the chatroom server, which
+   * will multicast message to all members in chatroom.
+   */
   public class ChatroomNewMessageButtonListener implements ActionListener {
     @Override
     public void actionPerformed(ActionEvent e) {
       String newMessage = chatroomNewMessageField.getText();
       if (newMessage.length() == 0) {
         openToastLabel("Write a message to send!");
+        clientLogger.logger.info("Empty message field attempted to send");
       } else if (newMessage.contains("@#@") || newMessage.contains("%&%") || newMessage.contains("~##~")) {
+        // These are special reserved sequences since all communication is through sockets and
+        // delineators between content must be kept unique.
         openToastLabel("Do not use special reserved sequences '@#@', '%&%', or '~##~'!");
+        clientLogger.logger.info("Special reserved sequence attempted to send in chatroom");
       } else {
         String response = client.sendNewChatroomMessage(chatroomNewMessageField.getText());
+        clientLogger.logger.info("The following message was sent: " + chatroomNewMessageField.getText());
       }
     }
   }
 
+  /**
+   * Listener for button that updates what users are in the chat.
+   */
   public class GetUsersInChatroomButtonListener implements ActionListener {
     @Override
     public void actionPerformed(ActionEvent e) {
+      clientLogger.logger.info("Updated the users in the chatroom");
       ArrayList<String> members = client.attemptGetUsersInChatroom(chatroomName);
       roomMembersTextArea.setText("");
       for (String member : members) {
@@ -268,36 +317,58 @@ public class ClientGUI {
     }
   }
 
+  /**
+   * Listener for button that sends user back to chat selection screen. Client tells Chatroom server
+   * that this user is leaving. If successful then chat selection screen is opened.
+   */
   public class BackToChatSelectionButtonListener implements ActionListener {
     @Override
     public void actionPerformed(ActionEvent e) {
       String response = client.attemptBackToChatSelection();
       if (response.equalsIgnoreCase("success")) {
         openChatSelectionScreen();
+        clientLogger.logger.info("Successfully went back to chat selection screen");
       } else {
-        System.out.println("Could not go back to chat selection screen.");
+        clientLogger.logger.warning("Could not go back to chat selection screen.");
       }
     }
   }
 
+  /**
+   * Remove all of the Swing components on panel so that a new screen can be put up.
+   */
   public void removeAllComponents() {
     this.componentsOnPanel.forEach((component -> {
       this.panel.remove(component);
     }));
   }
 
+  /**
+   * Add component to the list of components so that they can be tracked and removed as necessary.
+   * @param component
+   */
   public void addComponentToPanel(Component component) {
     this.componentsOnPanel.add(component);
     this.panel.add(component);
   }
 
+  /**
+   * Display a message and who it was sent by in the chatroom text area.
+   * @param sender
+   * @param message
+   */
   public void displayNewMessage(String sender, String message) {
     this.chatroomTextArea.append(sender + ": " + message + "\n");
+    clientLogger.logger.info("Displaying message: " + message + " from user: " + sender);
   }
 
+  /**
+   * Open the chatroom screen which includes an area that displays texts, a textbox and button to
+   * send messages, a section that displays the users currently in the chatroom, a button to update
+   * this section, a button to go back to the chat selection screen, and a logout button.
+   */
   public void openChatroomScreen() {
     this.removeAllComponents();
-//    panel.setLayout(new GridLayout(0, 1));
     panel.setLayout(new BoxLayout(panel, BoxLayout.Y_AXIS));
 
     // Add messaging components to panel
@@ -305,6 +376,9 @@ public class ClientGUI {
     this.chatroomTextArea = new JTextArea(10, 30);
     this.chatroomScrollPane = new JScrollPane(this.chatroomTextArea);
     this.chatroomTextArea.setEditable(false);
+    // smart scroller ensures that display shows most recent messages by default, and it also ensures
+    // that a new message will not force the screen to move to the bottom if the user has scrolled
+    // up and is looking at older messages.
     new SmartScroller(this.chatroomScrollPane);
     this.chatroomNewMessageField = new JTextField(30);
     this.chatroomNewMessageButton = new JButton("Send");
@@ -332,7 +406,7 @@ public class ClientGUI {
     this.backToChatSelectionButton = new JButton("Go Back To Chatroom Selection Screen");
     this.backToChatSelectionButton.addActionListener(new BackToChatSelectionButtonListener());
     this.logoutButton = new JButton("Log Out");
-    this.logoutButton.addActionListener(new ChatroomLogOutButtonListener()); // TODO - maybe have a differnt button listener for this
+    this.logoutButton.addActionListener(new ChatroomLogOutButtonListener());
     addComponentToPanel(this.backToChatSelectionButton);
     addComponentToPanel(this.logoutButton);
 
@@ -340,11 +414,16 @@ public class ClientGUI {
     frame.pack();
   }
 
+  /**
+   * Open the screen for joining or creating a chatroom. This screen has a textbox and button for
+   * joining a chatroom, a textbox and button for creating a chatroom, a display for what chatrooms
+   * are live and how many people are in them, and a button for logging out.
+   */
   public void openChatSelectionScreen() {
     this.removeAllComponents();
-
     panel.setLayout(new GridLayout(0, 2));
 
+    // All components for joining or creating a chatroom
     joinChatLabel = new JLabel("Enter Chatroom to Join:");
     createChatLabel = new JLabel("Enter Chatroom to Create:");
     joinChatField = new JTextField(10);
@@ -354,6 +433,7 @@ public class ClientGUI {
     joinChatButton.addActionListener(new JoinChatButtonListener());
     createChatButton.addActionListener(new CreateChatButtonListener());
 
+    // all components for displaying live chatrooms and how many people are in them
     allChatroomNamesLabel = new JLabel("Available Chatrooms:");
     allChatroomMembersLabel = new JLabel("Total members:");
     allChatroomNamesTextArea = new JTextArea(4, 4);
@@ -364,7 +444,6 @@ public class ClientGUI {
     allChatroomMembersScrollPane = new JScrollPane(allChatroomMembersTextArea);
     allChatroomMembersTextArea.setEditable(false);
     new SmartScroller(allChatroomMembersScrollPane);
-
     ArrayList<String[]> chatNameNumberPairs = this.client.attemptGetNumUsersInChatrooms();
     for (String[] chatNameNumberPair : chatNameNumberPairs) {
       String roomName = chatNameNumberPair[0];
@@ -392,9 +471,15 @@ public class ClientGUI {
     frame.pack();
   }
 
+  /**
+   * Open screen for logging in or registering. This screen displays a login section with a username
+   * textbox, a password textbox, and a button to log in. The screen also displays a register section
+   * with a username textbox, a password textbox, and a button to register.
+   */
   public void openLoginRegisterScreen() {
     this.removeAllComponents();
 
+    // components for logging in
     this.loginTitleLabel = new JLabel("Login");
     this.loginTitleLabel.setFont(new Font("Serif", Font.BOLD, 26));
     this.loginUsernameLabel = new JLabel("Username:");
@@ -406,6 +491,7 @@ public class ClientGUI {
 
     this.separator = new JSeparator();
 
+    // components for registering
     this.registerTitleLabel = new JLabel("Register");
     this.registerTitleLabel.setFont(new Font("Serif", Font.BOLD, 26));
     this.registerUsernameLabel = new JLabel("Username:");
